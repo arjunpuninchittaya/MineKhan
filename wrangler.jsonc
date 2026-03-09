@@ -1,43 +1,45 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "minekhan",
-  // Worker entry point (handles dynamic API routes; falls back to static assets)
-  "main": "worker/index.js",
-  "compatibility_date": "2025-09-27",
-  "observability": {
-    "enabled": true
-  },
-  // Static assets (the bundled game built by `node index.js`)
-  "assets": {
-    "directory": "dist"
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  // KV namespace for users, sessions, and cloud saves.
-  // To set up: run `npx wrangler kv namespace create MineKhanKV`
-  // then replace the placeholder IDs below with the ones Wrangler prints.
-  "kv_namespaces": [
-    {
-      "binding": "KV",
-      "id": "MINEKHAN_KV",
-      "preview_id": "7445803a0276404da4abf979e0834269"
-    }
-  ],
-  // Durable Objects for real-time multiplayer rooms (one per world).
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "WORLD_ROOM",
-        "class_name": "WorldRoom"
-      }
-    ]
-  },
-  // Durable Object migration (required on first deploy).
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_classes": ["WorldRoom"]
-    }
-  ]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "minekhan",
+	// Worker entry point (handles dynamic API routes; falls back to static assets)
+	"main": "worker/index.js",
+	"compatibility_date": "2025-09-27",
+	"observability": {
+		"enabled": true
+	},
+	// Static assets (the bundled game built by `node index.js`)
+	"assets": {
+		"directory": "dist"
+	},
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// KV namespace for users, sessions, and cloud saves.
+	// To set up: run `npx wrangler kv namespace create MineKhanKV`
+	// then replace the placeholder IDs below with the ones Wrangler prints.
+	"kv_namespaces": [
+		{
+			"binding": "MineKhanKV",
+			"id": "c3f9bf703fae4c53ba48414bb309a078",
+			"preview_id": "8145dc77c02f4280b71ac15165a4a915"
+		}
+	],
+	// Durable Objects for real-time multiplayer rooms (one per world).
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "WORLD_ROOM",
+				"class_name": "WorldRoom"
+			}
+		]
+	},
+	// Durable Object migration (required on first deploy).
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"WorldRoom"
+			]
+		}
+	]
 }
