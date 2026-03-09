@@ -400,6 +400,15 @@ const MineKhan = async () => {
 					if (survival) invScroll.classList.add('hidden')
 					else invScroll.classList.remove('hidden')
 				}
+			},
+			onexit: () => {
+				// Return crafting-grid items to storage and drop held item
+				inventory.returnCraftItems()
+				if (inventory.heldItem) {
+					inventory.playerStorage?.addItem(inventory.heldItem)
+					inventory.heldItem = null
+				}
+				inventory.hotbar.render()
 			}
 		},
 		controls: {
@@ -3837,6 +3846,32 @@ const MineKhan = async () => {
 		ctx.stroke()
 	}
 
+	/**
+	 * Draws (or clears) a circular progress arc around the crosshair showing
+	 * how close the player is to breaking the targeted block in survival mode.
+	 */
+	let prevBreakRect = null
+	const renderBreakProgress = () => {
+		const breaking = survival && p.breakBlockKey && p.breakTime !== Infinity && p.breakTime > 0
+		if (prevBreakRect) {
+			ctx.clearRect(prevBreakRect.x, prevBreakRect.y, prevBreakRect.w, prevBreakRect.h)
+			prevBreakRect = null
+		}
+		if (!breaking) return
+		const progress = Math.min(1, (now - p.breakStart) / p.breakTime)
+		const cx = width / 2
+		const cy = height / 2
+		const r = 20
+		ctx.save()
+		ctx.strokeStyle = "rgba(255, 200, 50, 0.9)"
+		ctx.lineWidth = 3
+		ctx.beginPath()
+		ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * 2 * Math.PI)
+		ctx.stroke()
+		ctx.restore()
+		prevBreakRect = { x: cx - r - 4, y: cy - r - 4, w: r * 2 + 8, h: r * 2 + 8 }
+	}
+
 	let debugLines = []
 	let newDebugLines = []
 	const hud = (clear) => {
@@ -4705,6 +4740,7 @@ const MineKhan = async () => {
 			let renderStart = performance.now()
 			p.setDirection()
 			world.render()
+			renderBreakProgress()
 			analytics.totalRenderTime += performance.now() - renderStart
 		}
 
