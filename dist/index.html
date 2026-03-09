@@ -220,11 +220,30 @@ input[type=text]:focus {
 }
 #inv-container {
 	z-index: 1;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	background: #c6c6c6;
+	border: 3px solid;
+	border-top-color: #ffffff;
+	border-left-color: #ffffff;
+	border-right-color: #555555;
+	border-bottom-color: #555555;
+	padding: 7px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	image-rendering: pixelated;
 }
 #inv-scroll {
-	height: calc(100vh - (min(100vh, 100vw) / 3.25));
+	height: auto;
+	max-height: calc(50vh - 100px);
 	overflow-y: auto;
-	border-bottom: solid 2px lightgray;
+	border-bottom: none;
+}
+#inv-player-canvas {
+	display: block;
+	image-rendering: pixelated;
 }
 #controls-page {
 	z-index: 1;
@@ -295,6 +314,7 @@ input[type=text]:focus {
 				<!-- This is very very important: canvases need that tabindex thing to capture keyboard events. Idk why. But I spent hours trying to figure it out. -->
 				<canvas id="container" tabindex="0"></canvas>
 			</div>
+			<canvas id="inv-player-canvas"></canvas>
 			<canvas id="inventory" tabindex="0"></canvas>
 		</div>
 		<canvas id="hotbar" class="hidden center-div"></canvas>
@@ -2798,6 +2818,73 @@ const heldCtx = heldItemCanvas.getContext("2d")
  */
 const hoverBox = document.getElementById("onhover")
 
+/**
+ * Draws a single Minecraft-style inset slot background.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} x
+ * @param {Number} y
+ * @param {Number} size
+ */
+const drawSlot = (ctx, x, y, size) => {
+	const b = Math.max(1, size >> 4) // border ≈ 1/16 of slot size
+	ctx.fillStyle = "#8b8b8b"
+	ctx.fillRect(x, y, size, size)
+	// Top/left dark edges (recessed look)
+	ctx.fillStyle = "#373737"
+	ctx.fillRect(x, y, size, b)
+	ctx.fillRect(x, y, b, size)
+	// Bottom/right light edges
+	ctx.fillStyle = "#ffffff"
+	ctx.fillRect(x, y + size - b, size, b)
+	ctx.fillRect(x + size - b, y, b, size)
+}
+
+/**
+ * Draws a simple Steve-like player figure on a 2D canvas.
+ * The figure is 16 pixels wide × 32 pixels tall in "block pixels";
+ * `sc` is the scale factor (pixels per block-pixel).
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} cx  Centre-X of the figure
+ * @param {Number} ty  Top-Y of the figure
+ * @param {Number} sc  Scale factor
+ */
+const drawPlayerModel = (ctx, cx, ty, sc) => {
+	sc = Math.max(1, sc)
+	// Head (8×8)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx - 4*sc, ty, 8*sc, 8*sc)
+	// Hair detail
+	ctx.fillStyle = "#6b4226"
+	ctx.fillRect(cx - 4*sc, ty, 8*sc, 2*sc)           // top
+	ctx.fillRect(cx - 4*sc, ty + 2*sc, sc, 5*sc)      // left side
+	ctx.fillRect(cx + 3*sc, ty + 2*sc, sc, 5*sc)      // right side
+	// Eyes
+	ctx.fillStyle = "#111111"
+	ctx.fillRect(cx - 2*sc, ty + 3*sc, sc, 2*sc)      // left eye
+	ctx.fillRect(cx + sc,   ty + 3*sc, sc, 2*sc)      // right eye
+	// Body (8×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx - 4*sc, ty + 8*sc, 8*sc, 12*sc)
+	// Left arm (4×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx - 8*sc, ty + 8*sc, 4*sc, 8*sc)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx - 8*sc, ty + 16*sc, 4*sc, 4*sc)  // left hand
+	// Right arm (4×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx + 4*sc, ty + 8*sc, 4*sc, 8*sc)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx + 4*sc, ty + 16*sc, 4*sc, 4*sc)  // right hand
+	// Legs (each 4×12)
+	ctx.fillStyle = "#3d5a8a"
+	ctx.fillRect(cx - 4*sc, ty + 20*sc, 4*sc, 10*sc) // left leg
+	ctx.fillRect(cx,        ty + 20*sc, 4*sc, 10*sc) // right leg
+	// Boots
+	ctx.fillStyle = "#2a2a2a"
+	ctx.fillRect(cx - 4*sc, ty + 30*sc, 4*sc, 2*sc)  // left boot
+	ctx.fillRect(cx,        ty + 30*sc, 4*sc, 2*sc)  // right boot
+}
+
 const displayHoverText = (text, mouseX, mouseY) => {
 	hoverBox.textContent = text
 	hoverBox.classList.remove("hidden")
@@ -2936,26 +3023,17 @@ class InventoryPage {
 		this.ctx.canvas.height = top + this.height + 10 // Clears the canvas like ctx.clearRect
 		this.ctx.canvas.width = this.width + left * 2
 
+		// Draw slot backgrounds (dark inset slots)
+		for (let i = 0; i < this.size; i++) {
+			drawSlot(this.ctx, left + i % 9 * slotSize, top + (i / 9 | 0) * slotSize, slotSize)
+		}
+
 		// Draw the blocks
 		let drawn = 0
 		for (let py = 0; drawn < this.size; py++) {
 			this.renderRow(left, top + py * slotSize, slotSize, drawn)
 			drawn += 9
 		}
-
-		// Draw the grid
-		this.ctx.lineWidth = 4
-		this.ctx.strokeStyle = "black"
-		this.ctx.beginPath()
-		for (let y = 0; y <= this.height; y += slotSize) {
-			this.ctx.moveTo(left,              top + y)
-			this.ctx.lineTo(left + this.width, top + y)
-		}
-		for (let x = 0; x <= this.width; x += slotSize) {
-			this.ctx.moveTo(left + x, top)
-			this.ctx.lineTo(left + x, top + this.height)
-		}
-		this.ctx.stroke()
 	}
 	/**
 	 * @param {MouseEvent} event
@@ -2966,23 +3044,25 @@ class InventoryPage {
 		const overIndex = this.indexAt(mouseX, mouseY)
 		if (this.items[overIndex]) displayHoverText(this.items[overIndex].name, event.x, event.y)
 		if (this.hoverIndex === overIndex) return
-		this.ctx.lineWidth = 4
+		this.ctx.lineWidth = 2
 
-		// Clear the previous highlight
+		// Restore the previous slot (redraw background + item)
 		if (this.hoverIndex >= 0) {
-			this.ctx.strokeStyle = "black"
 			const x = this.hoverIndex % 9 * this.slotSize + this.left
 			const y = (this.hoverIndex / 9 | 0) * this.slotSize + this.top
-			this.ctx.strokeRect(x, y, this.slotSize, this.slotSize)
+			drawSlot(this.ctx, x, y, this.slotSize)
+			if (this.items[this.hoverIndex]?.icon) {
+				this.items[this.hoverIndex].render(this.ctx, x, y, this.slotSize)
+			}
 		}
 		this.hoverIndex = overIndex
 
-		// Draw new highlight and hover text
+		// Draw new highlight
 		if (overIndex >= 0 && this.items[overIndex]?.icon) {
 			this.ctx.strokeStyle = "white"
 			const x = overIndex % 9 * this.slotSize + this.left
 			const y = (overIndex / 9 | 0) * this.slotSize + this.top
-			this.ctx.strokeRect(x, y, this.slotSize, this.slotSize)
+			this.ctx.strokeRect(x + 1, y + 1, this.slotSize - 2, this.slotSize - 2)
 		}
 		else hoverBox.classList.add("hidden")
 	}
@@ -3017,13 +3097,13 @@ class InventoryPage {
 		// Redraw the tile
 		const x = this.hoverIndex % 9 * this.slotSize + this.left
 		const y = (this.hoverIndex / 9 | 0) * this.slotSize + this.top
-		this.ctx.clearRect(x, y, this.slotSize, this.slotSize)
+		drawSlot(this.ctx, x, y, this.slotSize)
 		if (this.items[this.hoverIndex]) {
 			this.items[this.hoverIndex].render(this.ctx, x, y, this.slotSize)
+			this.ctx.lineWidth = 2
 			this.ctx.strokeStyle = "white"
+			this.ctx.strokeRect(x + 1, y + 1, this.slotSize - 2, this.slotSize - 2)
 		}
-		else invCtx.strokeStyle = "black"
-		invCtx.strokeRect(x, y, this.slotSize, this.slotSize)
 
 		return old
 	}
@@ -3212,6 +3292,9 @@ class InventoryManager {
 				this.hotbar[i] = storage.items[i + 27]?.id || 0
 			}
 		}
+
+		// Render the player panel with a default name; overwritten with the real name on open
+		this.renderPlayerPanel("Player")
 	}
 
 	render() {
@@ -3221,14 +3304,16 @@ class InventoryManager {
 
 		this.containers[this.currentPage].render(left, top + tileSize + 5, tileSize)
 
+		// Draw each category tab with styled slot background
 		for (let i = 0; i < this.containers.length; i++) {
 			const inv = this.containers[i]
+			drawSlot(contCtx, left + i * tileSize, top, tileSize)
 			contCtx.drawImage(inv.icon, left + i * tileSize, top, tileSize, tileSize)
-			contCtx.strokeStyle = "red"
-			contCtx.strokeRect(left + tileSize * i, top, tileSize, tileSize)
 		}
-		contCtx.strokeStyle = "green"
-		contCtx.strokeRect(left + tileSize * this.currentPage, top, tileSize, tileSize)
+		// Highlight the active tab
+		contCtx.lineWidth = 2
+		contCtx.strokeStyle = "white"
+		contCtx.strokeRect(left + tileSize * this.currentPage + 1, top + 1, tileSize - 2, tileSize - 2)
 	}
 
 	/**
@@ -3267,6 +3352,64 @@ class InventoryManager {
 		if (this.playerStorage) {
 			this.playerStorage.render(10, 10, newSize)
 			this.render()
+			this.renderPlayerPanel(this.playerName)
+		}
+	}
+
+	/**
+	 * Renders the player model + armor slots + name panel above the inventory grid.
+	 * @param {String} [playerName]
+	 */
+	renderPlayerPanel(playerName) {
+		this.playerName = playerName || this.playerName || "Player"
+		const canvas = document.getElementById("inv-player-canvas")
+		if (!canvas) return
+		const s = this.iconSize
+		const pad = 10
+		const W = 9 * s + pad * 2
+		const H = 4 * s + pad * 2
+
+		canvas.width = W
+		canvas.height = H
+
+		const ctx = canvas.getContext("2d")
+
+		// --- Armor slots: left column (4 stacked slots) ---
+		for (let i = 0; i < 4; i++) {
+			drawSlot(ctx, pad, pad + i * s, s)
+		}
+
+		// --- Player model: 3-slot-wide area in the centre-left ---
+		const modelAreaX = pad + s + 4
+		const modelAreaW = 3 * s
+		// sc = floor(s/8); model is 32*sc px tall which fits in the 4*s panel height
+		const sc = Math.max(1, s >> 3)
+		const modelH = 32 * sc
+		const modelCX = modelAreaX + (modelAreaW >> 1)
+		// >> has lower precedence than -, so (4*s - modelH) is shifted; vertically centres the model
+		const modelTY = pad + (4 * s - modelH >> 1)
+		drawPlayerModel(ctx, modelCX, modelTY, sc)
+
+		// --- Right section: name + "Mainhand" label + slot ---
+		const rightX = modelAreaX + modelAreaW + 8
+
+		const labelFont = Math.max(10, s * 0.35 | 0)
+		ctx.fillStyle = "#404040"
+		ctx.font = `bold ${labelFont}px monospace`
+		ctx.textAlign = "left"
+		ctx.fillText("Mainhand", rightX, pad + labelFont)
+
+		const nameFont = Math.max(8, s * 0.27 | 0)
+		ctx.font = `${nameFont}px monospace`
+		ctx.fillStyle = "#606060"
+		ctx.fillText(this.playerName, rightX, pad + labelFont + nameFont + 4)
+
+		// Mainhand display slot (top-right corner of the panel)
+		drawSlot(ctx, W - pad - s, pad, s)
+		// Draw the currently held item in the mainhand slot
+		if (this.playerStorage) {
+			const heldItem = this.playerStorage.items[this.hotbar?.index]
+			if (heldItem?.icon) heldItem.render(ctx, W - pad - s, pad, s)
 		}
 	}
 }
@@ -6345,6 +6488,7 @@ const MineKhan = async () => {
 			onenter: () => {
 				ctx.clearRect(0, 0, width, height) // Hide the GUI and text and stuff
 				inventory.playerStorage.render()
+				inventory.renderPlayerPanel(currentUser.username)
 				// In survival mode, hide the creative inventory container
 				const invScroll = document.getElementById('inv-scroll')
 				if (invScroll) {

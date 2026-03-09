@@ -158,11 +158,30 @@ input[type=text]:focus {
 }
 #inv-container {
 	z-index: 1;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	background: #c6c6c6;
+	border: 3px solid;
+	border-top-color: #ffffff;
+	border-left-color: #ffffff;
+	border-right-color: #555555;
+	border-bottom-color: #555555;
+	padding: 7px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	image-rendering: pixelated;
 }
 #inv-scroll {
-	height: calc(100vh - (min(100vh, 100vw) / 3.25));
+	height: auto;
+	max-height: calc(50vh - 100px);
 	overflow-y: auto;
-	border-bottom: solid 2px lightgray;
+	border-bottom: none;
+}
+#inv-player-canvas {
+	display: block;
+	image-rendering: pixelated;
 }
 #controls-page {
 	z-index: 1;

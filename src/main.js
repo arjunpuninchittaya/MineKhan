@@ -393,6 +393,7 @@ const MineKhan = async () => {
 			onenter: () => {
 				ctx.clearRect(0, 0, width, height) // Hide the GUI and text and stuff
 				inventory.playerStorage.render()
+				inventory.renderPlayerPanel(currentUser.username)
 				// In survival mode, hide the creative inventory container
 				const invScroll = document.getElementById('inv-scroll')
 				if (invScroll) {
