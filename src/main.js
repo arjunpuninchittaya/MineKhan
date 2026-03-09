@@ -181,9 +181,9 @@ const MineKhan = async () => {
 		}
 		await saveToDB(world.id, saveObj).catch(e => console.error(e))
 		world.edited = now
-		if (location.href.startsWith("https://willard.fun/")) {
+		if (location.origin === "https://minekhan.arjun-puninchittaya.workers.dev") {
 			console.log('Saving to server')
-			await fetch(`https://willard.fun/minekhan/saves?id=${world.id}&edited=${saveObj.edited}&name=${encodeURIComponent(world.name)}&version=${encodeURIComponent(version)}`, {
+			await fetch(`https://minekhan.arjun-puninchittaya.workers.dev/minekhan/saves?id=${world.id}&edited=${saveObj.edited}&name=${encodeURIComponent(world.name)}&version=${encodeURIComponent(version)}`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/octet-stream"
@@ -236,7 +236,7 @@ const MineKhan = async () => {
 	// const ROTATION = 0x1800 // Mask for the direction bits
 	let background = "url(./background.webp)"
 	if (location.origin === "https://www.kasandbox.org") background = "url(https://www.khanacademy.org/computer-programming/minekhan/5647155001376768/latest.png)"
-	else if (!location.origin.includes("localhost") && location.origin !== "file://") background = "url(https://willard.fun/minekhan/background.webp)"
+	else if (!location.origin.includes("localhost") && location.origin !== "file://") background = "url(./background.webp)"
 	canvas.style.backgroundImage = background
 
 	let dirtBuffer
@@ -2015,13 +2015,13 @@ const MineKhan = async () => {
 	}
 
 	const loggedIn = async () => {
-		let exists = await fetch("https://willard.fun/profile").then(res => res.text()).catch(() => "401")
+		let exists = await fetch("https://minekhan.arjun-puninchittaya.workers.dev/profile").then(res => res.text()).catch(() => "401")
 		if (!exists || exists === "401") {
-			if (location.href.startsWith("https://willard.fun")) {
-				alert("You're not logged in. Head over to https://willard.fun/login to login or register before connecting to the server.")
+			if (location.origin === "https://minekhan.arjun-puninchittaya.workers.dev") {
+				alert("You're not logged in. Head over to https://minekhan.arjun-puninchittaya.workers.dev/login to login or register before connecting to the server.")
 			}
 			else {
-				alert("Multiplayer is currently only available on https://willard.fun/login => https://willard.fun/minekhan")
+				alert("Multiplayer is currently only available on https://minekhan.arjun-puninchittaya.workers.dev/ – visit /login to register or log in.")
 			}
 			return false
 		}
@@ -2043,7 +2043,7 @@ const MineKhan = async () => {
 			target = world.id
 			host = true
 		}
-		multiplayer = new WebSocket("wss://willard.fun/ws?target=" + target)
+		multiplayer = new WebSocket("wss://minekhan.arjun-puninchittaya.workers.dev/ws?target=" + target)
 		multiplayer.host = host
 		multiplayer.binaryType = "arraybuffer"
 		multiplayer.onopen = () => {
@@ -2211,7 +2211,7 @@ const MineKhan = async () => {
 		let logged = await loggedIn()
 		if (!logged) return []
 
-		return await fetch("https://willard.fun/minekhan/worlds").then(res => res.json())
+		return await fetch("https://minekhan.arjun-puninchittaya.workers.dev/minekhan/worlds").then(res => res.json())
 	}
 
 	let fogDist = 16
@@ -3373,7 +3373,7 @@ const MineKhan = async () => {
 		Button.add(width / 2, height / 2 + 35, 400, 40, "Multiplayer", "main menu", () => {
 			changeScene("multiplayer menu")
 			initMultiplayerMenu()
-		}, () => !location.href.startsWith("https://willard.fun"), "Please visit https://willard.fun/login to enjoy multiplayer.")
+		}, () => location.origin !== "https://minekhan.arjun-puninchittaya.workers.dev", "Please visit https://minekhan.arjun-puninchittaya.workers.dev/login to enjoy multiplayer.")
 		Button.add(width / 2, height / 2 + 90, 400, 40, "Options", "main menu", () => changeScene("options"))
 		Button.add(width / 2, height / 2 + 145, 400, 40, "Change Log" + (settings.lastVersion !== version ? " (NEW UPDATE!)" : ""), "main menu", () => {
 			changeScene("changelog")
@@ -3451,12 +3451,12 @@ const MineKhan = async () => {
 		let mid = width / 2
 		Button.add(mid - 3 * x4, height - 30, w4, 40, "Edit", "loadsave menu", () => changeScene("editworld"), () => selected() || !worlds[selectedWorld].edited)
 		Button.add(mid - x4, height - 30, w4, 40, "Delete", "loadsave menu", () => {
-			const cloud = location.href.startsWith("https://willard.fun/") ? " This will also delete it from the cloud." : ""
+			const cloud = location.origin === "https://minekhan.arjun-puninchittaya.workers.dev" ? " This will also delete it from the cloud." : ""
 			if (worlds[selectedWorld] && confirm(`Are you sure you want to delete ${worlds[selectedWorld].name}?${cloud}`)) {
 				deleteFromDB(selectedWorld)
 				win.worlds.removeChild(document.getElementById(selectedWorld))
 				delete worlds[selectedWorld]
-				if (cloud) fetch(`https://willard.fun/minekhan/saves/${selectedWorld}`, { method: "DELETE" })
+				if (cloud) fetch(`https://minekhan.arjun-puninchittaya.workers.dev/minekhan/saves/${selectedWorld}`, { method: "DELETE" })
 				selectedWorld = 0
 			}
 		}, () => selected() || !worlds[selectedWorld].edited, "Delete the world forever.")
@@ -3479,7 +3479,7 @@ const MineKhan = async () => {
 					world.edited = data.edited
 					if (data.code) code = data.code
 					else {
-						let cloudWorld = await fetch(`https://willard.fun/minekhan/saves/${selectedWorld}`).then(res => {
+						let cloudWorld = await fetch(`https://minekhan.arjun-puninchittaya.workers.dev/minekhan/saves/${selectedWorld}`).then(res => {
 							if (res.headers.get("content-type") === "application/octet-stream") return res.arrayBuffer().then(a => new Uint8Array(a))
 							else return res.text()
 						})
@@ -3537,7 +3537,7 @@ const MineKhan = async () => {
 		Button.add(width / 2, 225, 300, 40, "Resume", "pause", play)
 		Button.add(width / 2, 275, 300, 40, "Options", "pause", () => changeScene("options"))
 		Button.add(width / 2, 325, 300, 40, "Save", "pause", save, () => !!multiplayer && !multiplayer.host, () => {
-			const account = location.href.startsWith("https://willard.fun") ? " + account" : ""
+			const account = location.origin === "https://minekhan.arjun-puninchittaya.workers.dev" ? " + account" : ""
 			return `Save the world to your browser${account}. Doesn't work in incognito.\n\nLast saved ${timeString(now - world.edited)}.`
 		})
 		Button.add(width / 2, 375, 300, 40, "Get Save Code", "pause", () => {
@@ -3547,7 +3547,7 @@ const MineKhan = async () => {
 		})
 		Button.add(width / 2, 425, 300, 40, "Open World To Public", "pause", () => {
 			initMultiplayer()
-		}, () => !!multiplayer || !location.href.startsWith("https://willard.fun"))
+		}, () => !!multiplayer || location.origin !== "https://minekhan.arjun-puninchittaya.workers.dev")
 		Button.add(width / 2, 475, 300, 40, "Exit Without Saving", "pause", () => {
 			// savebox.value = world.getSaveString()
 			if (multiplayer) {
@@ -4336,8 +4336,8 @@ const MineKhan = async () => {
 			}
 		}
 
-		if (location.href.startsWith("https://willard.fun/")) {
-			let cloudSaves = await fetch('https://willard.fun/minekhan/saves').then(res => res.json())
+		if (location.origin === "https://minekhan.arjun-puninchittaya.workers.dev") {
+			let cloudSaves = await fetch('https://minekhan.arjun-puninchittaya.workers.dev/minekhan/saves').then(res => res.json())
 			if (Array.isArray(cloudSaves) && cloudSaves.length) {
 				for (let data of cloudSaves) {
 					if (worlds[data.id] && worlds[data.id].edited >= data.edited) continue

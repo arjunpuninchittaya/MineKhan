@@ -214,7 +214,7 @@ const changeList = [
 	{
 		date: "2025-04-24",
 		version: "0.8.3",
-		versionLink: "https://willard.fun/minekhan",
+		versionLink: "https://minekhan.arjun-puninchittaya.workers.dev",
 		creditName: "Willard",
 		creditLink: "https://github.com/Willard21",
 		changes: [
