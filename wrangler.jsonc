@@ -20,8 +20,8 @@
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "REPLACE_WITH_KV_NAMESPACE_ID",
-      "preview_id": "REPLACE_WITH_KV_PREVIEW_NAMESPACE_ID"
+      "id": "MINEKHAN_KV",
+      "preview_id": "7445803a0276404da4abf979e0834269"
     }
   ],
   // Durable Objects for real-time multiplayer rooms (one per world).
