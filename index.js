@@ -121,6 +121,11 @@ function bundle() {
 	// .split("\n").map(line => line.trim()).filter(line => line && !line.startsWith("//")).join("\n")
 	console.log("\n" + new Date().toISOString(), "\nCode Length:", code.length.toLocaleString(), "\nCompile Time:", (Date.now() - startTime).toLocaleString(), "ms")
 	f.writeFile(buildPath, code)
+
+	// Copy static assets to dist/ when building locally
+	if (!cmd) {
+		f.copyFile("favicon.ico", "dist/favicon.ico").catch(() => {})
+	}
 }
 
 bundle()

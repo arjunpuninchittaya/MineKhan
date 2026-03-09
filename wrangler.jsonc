@@ -1,14 +1,43 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "minekhan",
+  // Worker entry point (handles dynamic API routes; falls back to static assets)
+  "main": "worker/index.js",
   "compatibility_date": "2025-09-27",
   "observability": {
     "enabled": true
   },
+  // Static assets (the bundled game built by `node index.js`)
   "assets": {
     "directory": "dist"
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  // KV namespace for users, sessions, and cloud saves.
+  // To set up: run `npx wrangler kv namespace create MineKhanKV`
+  // then replace the placeholder IDs below with the ones Wrangler prints.
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID",
+      "preview_id": "REPLACE_WITH_KV_PREVIEW_NAMESPACE_ID"
+    }
+  ],
+  // Durable Objects for real-time multiplayer rooms (one per world).
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WORLD_ROOM",
+        "class_name": "WorldRoom"
+      }
+    ]
+  },
+  // Durable Object migration (required on first deploy).
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["WorldRoom"]
+    }
   ]
 }
