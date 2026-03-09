@@ -3382,8 +3382,14 @@ const MineKhan = async () => {
 				saveToDB("settings", settings).catch(e => console.error(e))
 			}
 		})
+		Button.add(width / 2, height / 2 + 200, 400, 40, "Login / Register", "main menu", () => {
+			const loginUrl = location.origin === "https://minekhan.arjun-puninchittaya.workers.dev"
+				? "/login"
+				: "https://minekhan.arjun-puninchittaya.workers.dev/login"
+			window.location.href = loginUrl
+		})
 		if (height <= 600) {
-			Button.add(width / 2, height / 2 + 200, 400, 40, "Full Screen", "main menu", () => {
+			Button.add(width / 2, height / 2 + 255, 400, 40, "Full Screen", "main menu", () => {
 				const w = window.open()
 				w.document.write(document.children[0].outerHTML)
 			})

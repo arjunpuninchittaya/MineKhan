@@ -149,7 +149,7 @@ export class WorldRoom {
 
 			// Persist world info to KV so /minekhan/worlds can list it
 			if (this.worldId) {
-				await this.env.KV.put(
+				await this.env.MineKhanKV.put(
 					`world:${this.worldId}`,
 					JSON.stringify({
 						id: this.worldId,
@@ -211,7 +211,7 @@ export class WorldRoom {
 		if (this.sessions.size === 0) {
 			this.initialized = false
 			if (this.worldId) {
-				await this.env.KV.delete(`world:${this.worldId}`).catch(() => {})
+				await this.env.MineKhanKV.delete(`world:${this.worldId}`).catch(() => {})
 			}
 			return
 		}
@@ -228,7 +228,7 @@ export class WorldRoom {
 
 	async refreshWorldKV() {
 		if (!this.worldId || !this.initialized) return
-		await this.env.KV.put(
+		await this.env.MineKhanKV.put(
 			`world:${this.worldId}`,
 			JSON.stringify({
 				id: this.worldId,
@@ -308,10 +308,10 @@ async function getSessionUser(request, env) {
 	}
 	if (!token) return null
 
-	const sessionData = await env.KV.get(`session:${token}`, { type: "json" })
+	const sessionData = await env.MineKhanKV.get(`session:${token}`, { type: "json" })
 	if (!sessionData) return null
 	if (sessionData.expiresAt < Date.now()) {
-		await env.KV.delete(`session:${token}`).catch(() => {})
+		await env.MineKhanKV.delete(`session:${token}`).catch(() => {})
 		return null
 	}
 	return { ...sessionData, token }
@@ -344,7 +344,7 @@ async function handleRegister(request, env) {
 
 	let existing
 	try {
-		existing = await env.KV.get(userKey)
+		existing = await env.MineKhanKV.get(userKey)
 	} catch (err) {
 		console.error("KV error during register:", err)
 		return errorResponse("Service unavailable, please try again later", 503)
@@ -356,8 +356,8 @@ async function handleRegister(request, env) {
 	const userId = generateId()
 
 	try {
-		await env.KV.put(userKey, JSON.stringify({ id: userId, username, passwordHash, salt }))
-		await env.KV.put(`userid:${userId}`, username)
+		await env.MineKhanKV.put(userKey, JSON.stringify({ id: userId, username, passwordHash, salt }))
+		await env.MineKhanKV.put(`userid:${userId}`, username)
 	} catch (err) {
 		console.error("KV error saving user:", err)
 		return errorResponse("Service unavailable, please try again later", 503)
@@ -379,7 +379,7 @@ async function handleLogin(request, env) {
 
 	let userData
 	try {
-		userData = await env.KV.get(`user:${username.toLowerCase()}`, { type: "json" })
+		userData = await env.MineKhanKV.get(`user:${username.toLowerCase()}`, { type: "json" })
 	} catch (err) {
 		console.error("KV error during login:", err)
 		return errorResponse("Service unavailable, please try again later", 503)
@@ -392,7 +392,7 @@ async function handleLogin(request, env) {
 	const token = generateUUID()
 	const expiresAt = Date.now() + SESSION_TTL_SECS * MS_PER_SEC
 	try {
-		await env.KV.put(
+		await env.MineKhanKV.put(
 			`session:${token}`,
 			JSON.stringify({ userId: userData.id, username: userData.username, expiresAt }),
 			{ expirationTtl: SESSION_TTL_SECS }
@@ -418,7 +418,7 @@ async function handleGetSaves(request, env) {
 	const user = await getSessionUser(request, env)
 	if (!user) return errorResponse("Not authenticated", 401)
 
-	const saves = await env.KV.get(`saves:${user.userId}`, { type: "json" })
+	const saves = await env.MineKhanKV.get(`saves:${user.userId}`, { type: "json" })
 	return jsonResponse(saves || [])
 }
 
@@ -437,7 +437,7 @@ async function handlePostSave(request, env) {
 	const body = await request.arrayBuffer()
 	if (body.byteLength > MAX_SAVE_SIZE) return errorResponse("Save too large (max 10 MB)")
 
-	let saves = (await env.KV.get(`saves:${user.userId}`, { type: "json" })) || []
+	let saves = (await env.MineKhanKV.get(`saves:${user.userId}`, { type: "json" })) || []
 	const idx = saves.findIndex((s) => s.id === id)
 	const meta = { id, name, version, size: body.byteLength, edited }
 
@@ -448,8 +448,8 @@ async function handlePostSave(request, env) {
 		saves.push(meta)
 	}
 
-	await env.KV.put(`saves:${user.userId}`, JSON.stringify(saves))
-	await env.KV.put(`savedata:${user.userId}:${id}`, body)
+	await env.MineKhanKV.put(`saves:${user.userId}`, JSON.stringify(saves))
+	await env.MineKhanKV.put(`savedata:${user.userId}:${id}`, body)
 
 	return jsonResponse({ ok: true })
 }
@@ -458,7 +458,7 @@ async function handleGetSave(request, env, id) {
 	const user = await getSessionUser(request, env)
 	if (!user) return errorResponse("Not authenticated", 401)
 
-	const data = await env.KV.get(`savedata:${user.userId}:${id}`, { type: "arrayBuffer" })
+	const data = await env.MineKhanKV.get(`savedata:${user.userId}:${id}`, { type: "arrayBuffer" })
 	if (!data) return errorResponse("Save not found", 404)
 
 	return new Response(data, { headers: { "Content-Type": "application/octet-stream" } })
@@ -468,10 +468,10 @@ async function handleDeleteSave(request, env, id) {
 	const user = await getSessionUser(request, env)
 	if (!user) return errorResponse("Not authenticated", 401)
 
-	let saves = (await env.KV.get(`saves:${user.userId}`, { type: "json" })) || []
+	let saves = (await env.MineKhanKV.get(`saves:${user.userId}`, { type: "json" })) || []
 	saves = saves.filter((s) => s.id !== id)
-	await env.KV.put(`saves:${user.userId}`, JSON.stringify(saves))
-	await env.KV.delete(`savedata:${user.userId}:${id}`)
+	await env.MineKhanKV.put(`saves:${user.userId}`, JSON.stringify(saves))
+	await env.MineKhanKV.delete(`savedata:${user.userId}:${id}`)
 
 	return jsonResponse({ ok: true })
 }
@@ -484,10 +484,10 @@ async function handleGetWorlds(request, env) {
 	const user = await getSessionUser(request, env)
 	if (!user) return errorResponse("Not authenticated", 401)
 
-	const list = await env.KV.list({ prefix: "world:" })
+	const list = await env.MineKhanKV.list({ prefix: "world:" })
 	const worlds = []
 	for (const key of list.keys) {
-		const data = await env.KV.get(key.name, { type: "json" }).catch(() => null)
+		const data = await env.MineKhanKV.get(key.name, { type: "json" }).catch(() => null)
 		if (data) worlds.push(data)
 	}
 	return jsonResponse(worlds)
@@ -570,7 +570,9 @@ button[type=submit]:hover{background:#3a8eef;transform:translateY(-1px)}
 <div class="back"><a href="/">← Back to Game</a></div>
 </div>
 <script>
+console.log('[MineKhan] Login page loaded at', new Date().toISOString(), '| origin:', location.origin)
 function showTab(t){
+console.log('[MineKhan] Switching tab to:', t)
 document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',t==='login'?i===0:i===1))
 document.getElementById('lf').style.display=t==='login'?'':'none'
 document.getElementById('rf').style.display=t==='register'?'':'none'
@@ -579,28 +581,56 @@ function show(id,text,vis=true){const el=document.getElementById(id);el.textCont
 async function doLogin(){
 const u=document.getElementById('lu').value.trim()
 const p=document.getElementById('lp').value
+console.log('[MineKhan] doLogin() called | username:', u, '| password length:', p.length)
 show('le','',false)
-if(!u||!p){show('le','Please fill in all fields.');return}
-const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-const d=await res.json().catch(()=>({}))
-if(res.ok){window.location.href='/'}else{show('le',d.error||'Login failed.')}
+if(!u||!p){show('le','Please fill in all fields.');console.warn('[MineKhan] Login aborted: missing fields');return}
+console.log('[MineKhan] Sending POST /api/login ...')
+let res, d
+try {
+  res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+  console.log('[MineKhan] /api/login response status:', res.status, res.statusText)
+  d=await res.json().catch(e=>{console.error('[MineKhan] Failed to parse login response JSON:', e);return{}})
+  console.log('[MineKhan] /api/login response body:', JSON.stringify(d))
+} catch(e) {
+  console.error('[MineKhan] Fetch error on /api/login:', e)
+  show('le','Network error – please check your connection and try again.')
+  return
+}
+if(res.ok){console.log('[MineKhan] Login successful! Redirecting to /');window.location.href='/'}
+else{console.warn('[MineKhan] Login failed:', d.error);show('le',d.error||'Login failed.')}
 }
 async function doRegister(){
 const u=document.getElementById('ru').value.trim()
 const p=document.getElementById('rp').value
 const c=document.getElementById('rc').value
+console.log('[MineKhan] doRegister() called | username:', u, '| password length:', p.length, '| confirm length:', c.length)
 show('re','',false);show('rs','',false)
-if(!u||!p){show('re','Please fill in all fields.');return}
-if(u.length<3||u.length>20){show('re','Username must be 3–20 characters.');return}
-if(!/^[a-zA-Z0-9_]+$/.test(u)){show('re','Username: letters, numbers, underscores only.');return}
-if(p.length<6){show('re','Password must be at least 6 characters.');return}
-if(p!==c){show('re','Passwords do not match.');return}
-const res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-const d=await res.json().catch(()=>({}))
-if(res.ok){show('rs','Account created! You can now log in.');showTab('login');document.getElementById('lu').value=u}
-else{show('re',d.error||'Registration failed.')}
+if(!u||!p){show('re','Please fill in all fields.');console.warn('[MineKhan] Register aborted: missing fields');return}
+if(u.length<3||u.length>20){show('re','Username must be 3–20 characters.');console.warn('[MineKhan] Register aborted: invalid username length', u.length);return}
+if(!/^[a-zA-Z0-9_]+$/.test(u)){show('re','Username: letters, numbers, underscores only.');console.warn('[MineKhan] Register aborted: invalid username chars');return}
+if(p.length<6){show('re','Password must be at least 6 characters.');console.warn('[MineKhan] Register aborted: password too short');return}
+if(p!==c){show('re','Passwords do not match.');console.warn('[MineKhan] Register aborted: passwords do not match');return}
+console.log('[MineKhan] Client-side validation passed. Sending POST /api/register ...')
+let res, d
+try {
+  res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+  console.log('[MineKhan] /api/register response status:', res.status, res.statusText)
+  d=await res.json().catch(e=>{console.error('[MineKhan] Failed to parse register response JSON:', e);return{}})
+  console.log('[MineKhan] /api/register response body:', JSON.stringify(d))
+} catch(e) {
+  console.error('[MineKhan] Fetch error on /api/register:', e)
+  show('re','Network error – please check your connection and try again.')
+  return
 }
-fetch('/profile').then(r=>{if(r.ok)window.location.href='/'})
+if(res.ok){console.log('[MineKhan] Registration successful!');show('rs','Account created! You can now log in.');showTab('login');document.getElementById('lu').value=u}
+else{console.warn('[MineKhan] Registration failed:', d.error);show('re',d.error||'Registration failed.')}
+}
+console.log('[MineKhan] Checking existing session via GET /profile ...')
+fetch('/profile').then(r=>{
+  console.log('[MineKhan] /profile response status:', r.status)
+  if(r.ok){console.log('[MineKhan] Already logged in – redirecting to /');window.location.href='/'}
+  else{console.log('[MineKhan] No active session – showing login form')}
+}).catch(e=>console.error('[MineKhan] /profile fetch error:', e))
 </script>
 </body>
 </html>`
@@ -659,7 +689,7 @@ async function handleRequest(request, env) {
 	// Logout
 	if (pathname === "/api/logout") {
 		const user = await getSessionUser(request, env)
-		if (user) await env.KV.delete(`session:${user.token}`).catch(() => {})
+		if (user) await env.MineKhanKV.delete(`session:${user.token}`).catch(() => {})
 		return new Response(JSON.stringify({ ok: true }), {
 			headers: {
 				"Content-Type": "application/json",
