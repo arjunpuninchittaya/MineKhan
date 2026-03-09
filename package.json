@@ -4,7 +4,9 @@
   "description": "Minecraft for Khan Academy",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "repository": {
     "type": "git",
@@ -19,7 +21,8 @@
   "homepage": "https://github.com/Willard21/MineKhan#readme",
   "devDependencies": {
     "@types/node": "^20.12.7",
-    "eslint": "^8.21.0"
+    "eslint": "^8.21.0",
+    "wrangler": "^4.71.0"
   },
   "dependencies": {
     "compression": "^1.7.4",
