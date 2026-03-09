@@ -341,15 +341,27 @@ async function handleRegister(request, env) {
 	if (password.length < 6) return errorResponse("Password must be at least 6 characters")
 
 	const userKey = `user:${username.toLowerCase()}`
-	const existing = await env.KV.get(userKey)
+
+	let existing
+	try {
+		existing = await env.KV.get(userKey)
+	} catch (err) {
+		console.error("KV error during register:", err)
+		return errorResponse("Service unavailable, please try again later", 503)
+	}
 	if (existing) return errorResponse("Username already taken")
 
 	const salt = generateId()
 	const passwordHash = await hashPassword(password, salt)
 	const userId = generateId()
 
-	await env.KV.put(userKey, JSON.stringify({ id: userId, username, passwordHash, salt }))
-	await env.KV.put(`userid:${userId}`, username)
+	try {
+		await env.KV.put(userKey, JSON.stringify({ id: userId, username, passwordHash, salt }))
+		await env.KV.put(`userid:${userId}`, username)
+	} catch (err) {
+		console.error("KV error saving user:", err)
+		return errorResponse("Service unavailable, please try again later", 503)
+	}
 
 	return jsonResponse({ ok: true })
 }
@@ -365,7 +377,13 @@ async function handleLogin(request, env) {
 	const { username, password } = body || {}
 	if (!username || !password) return errorResponse("Username and password required")
 
-	const userData = await env.KV.get(`user:${username.toLowerCase()}`, { type: "json" })
+	let userData
+	try {
+		userData = await env.KV.get(`user:${username.toLowerCase()}`, { type: "json" })
+	} catch (err) {
+		console.error("KV error during login:", err)
+		return errorResponse("Service unavailable, please try again later", 503)
+	}
 	if (!userData) return errorResponse("Invalid username or password", 401)
 
 	const hash = await hashPassword(password, userData.salt)
@@ -373,11 +391,16 @@ async function handleLogin(request, env) {
 
 	const token = generateUUID()
 	const expiresAt = Date.now() + SESSION_TTL_SECS * MS_PER_SEC
-	await env.KV.put(
-		`session:${token}`,
-		JSON.stringify({ userId: userData.id, username: userData.username, expiresAt }),
-		{ expirationTtl: SESSION_TTL_SECS }
-	)
+	try {
+		await env.KV.put(
+			`session:${token}`,
+			JSON.stringify({ userId: userData.id, username: userData.username, expiresAt }),
+			{ expirationTtl: SESSION_TTL_SECS }
+		)
+	} catch (err) {
+		console.error("KV error saving session:", err)
+		return errorResponse("Service unavailable, please try again later", 503)
+	}
 
 	return new Response(JSON.stringify({ ok: true, username: userData.username }), {
 		headers: {
@@ -559,7 +582,7 @@ const p=document.getElementById('lp').value
 show('le','',false)
 if(!u||!p){show('le','Please fill in all fields.');return}
 const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-const d=await res.json()
+const d=await res.json().catch(()=>({}))
 if(res.ok){window.location.href='/'}else{show('le',d.error||'Login failed.')}
 }
 async function doRegister(){
@@ -573,7 +596,7 @@ if(!/^[a-zA-Z0-9_]+$/.test(u)){show('re','Username: letters, numbers, underscore
 if(p.length<6){show('re','Password must be at least 6 characters.');return}
 if(p!==c){show('re','Passwords do not match.');return}
 const res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-const d=await res.json()
+const d=await res.json().catch(()=>({}))
 if(res.ok){show('rs','Account created! You can now log in.');showTab('login');document.getElementById('lu').value=u}
 else{show('re',d.error||'Registration failed.')}
 }
@@ -588,82 +611,94 @@ fetch('/profile').then(r=>{if(r.ok)window.location.href='/'})
 
 export default {
 	async fetch(request, env) {
-		const url = new URL(request.url)
-		const { pathname } = url
-
-		// CORS pre-flight
-		if (request.method === "OPTIONS") {
-			return new Response(null, {
-				status: 204,
-				headers: {
-					"Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
-					"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-					"Access-Control-Allow-Headers": "Content-Type",
-					"Access-Control-Allow-Credentials": "true",
-					"Access-Control-Max-Age": "86400",
-				},
-			})
-		}
-
-		// Login page
-		if (pathname === "/login") {
-			return new Response(LOGIN_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } })
-		}
-
-		// Register
-		if (pathname === "/api/register" && request.method === "POST") {
-			return handleRegister(request, env)
-		}
-
-		// Login
-		if (pathname === "/api/login" && request.method === "POST") {
-			return handleLogin(request, env)
-		}
-
-		// Logout
-		if (pathname === "/api/logout") {
-			const user = await getSessionUser(request, env)
-			if (user) await env.KV.delete(`session:${user.token}`).catch(() => {})
-			return new Response(JSON.stringify({ ok: true }), {
-				headers: {
-					"Content-Type": "application/json",
-					"Set-Cookie": sessionCookie("", 0),
-				},
-			})
-		}
-
-		// Profile
-		if (pathname === "/profile") {
-			const user = await getSessionUser(request, env)
-			if (!user) return new Response("401", { status: 401 })
-			return new Response(JSON.stringify({ username: user.username, id: user.userId }), {
+		try {
+			return await handleRequest(request, env)
+		} catch (err) {
+			console.error("Unhandled worker error:", err)
+			return new Response(JSON.stringify({ error: "Internal server error" }), {
+				status: 500,
 				headers: { "Content-Type": "application/json" },
 			})
 		}
-
-		// Multiplayer worlds list
-		if (pathname === "/minekhan/worlds" && request.method === "GET") {
-			return handleGetWorlds(request, env)
-		}
-
-		// Cloud saves
-		if (pathname === "/minekhan/saves") {
-			if (request.method === "GET") return handleGetSaves(request, env)
-			if (request.method === "POST") return handlePostSave(request, env)
-		}
-
-		const saveMatch = pathname.match(/^\/minekhan\/saves\/(.+)$/)
-		if (saveMatch) {
-			if (request.method === "GET") return handleGetSave(request, env, saveMatch[1])
-			if (request.method === "DELETE") return handleDeleteSave(request, env, saveMatch[1])
-		}
-
-		// WebSocket multiplayer
-		if (pathname === "/ws") {
-			return handleWebSocket(request, env)
-		}
-
-		// Fall through to static assets (the bundled game)
-		return env.ASSETS.fetch(request)
 	},
+}
+
+async function handleRequest(request, env) {
+	const url = new URL(request.url)
+	const { pathname } = url
+
+	// CORS pre-flight
+	if (request.method === "OPTIONS") {
+		return new Response(null, {
+			status: 204,
+			headers: {
+				"Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+				"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type",
+				"Access-Control-Allow-Credentials": "true",
+				"Access-Control-Max-Age": "86400",
+			},
+		})
+	}
+
+	// Login page
+	if (pathname === "/login") {
+		return new Response(LOGIN_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } })
+	}
+
+	// Register
+	if (pathname === "/api/register" && request.method === "POST") {
+		return handleRegister(request, env)
+	}
+
+	// Login
+	if (pathname === "/api/login" && request.method === "POST") {
+		return handleLogin(request, env)
+	}
+
+	// Logout
+	if (pathname === "/api/logout") {
+		const user = await getSessionUser(request, env)
+		if (user) await env.KV.delete(`session:${user.token}`).catch(() => {})
+		return new Response(JSON.stringify({ ok: true }), {
+			headers: {
+				"Content-Type": "application/json",
+				"Set-Cookie": sessionCookie("", 0),
+			},
+		})
+	}
+
+	// Profile
+	if (pathname === "/profile") {
+		const user = await getSessionUser(request, env)
+		if (!user) return new Response("401", { status: 401 })
+		return new Response(JSON.stringify({ username: user.username, id: user.userId }), {
+			headers: { "Content-Type": "application/json" },
+		})
+	}
+
+	// Multiplayer worlds list
+	if (pathname === "/minekhan/worlds" && request.method === "GET") {
+		return handleGetWorlds(request, env)
+	}
+
+	// Cloud saves
+	if (pathname === "/minekhan/saves") {
+		if (request.method === "GET") return handleGetSaves(request, env)
+		if (request.method === "POST") return handlePostSave(request, env)
+	}
+
+	const saveMatch = pathname.match(/^\/minekhan\/saves\/(.+)$/)
+	if (saveMatch) {
+		if (request.method === "GET") return handleGetSave(request, env, saveMatch[1])
+		if (request.method === "DELETE") return handleDeleteSave(request, env, saveMatch[1])
+	}
+
+	// WebSocket multiplayer
+	if (pathname === "/ws") {
+		return handleWebSocket(request, env)
+	}
+
+	// Fall through to static assets (the bundled game)
+	return env.ASSETS.fetch(request)
 }
