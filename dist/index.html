@@ -10161,6 +10161,41 @@ const MineKhan = async () => {
 	 * Draws (or clears) a circular progress arc around the crosshair showing
 	 * how close the player is to breaking the targeted block in survival mode.
 	 */
+	/**
+	 * 18 crack line-segments (normalised 0-1 coords, origin top-left).
+	 * Progressively revealed: stage N shows the first ~(N/9 * 18) segments.
+	 * Origin of the web is near (0.45, 0.45) — slightly above-centre of the face.
+	 */
+	const CRACK_SEGS = [
+		// Stage 1 - first tiny crack
+		[0.45, 0.45, 0.52, 0.28],
+		// Stage 2
+		[0.52, 0.28, 0.62, 0.13],
+		// Stage 3 - branch left-down
+		[0.45, 0.45, 0.32, 0.60],
+		[0.32, 0.60, 0.20, 0.72],
+		// Stage 4 - branch right
+		[0.52, 0.28, 0.68, 0.22],
+		[0.45, 0.45, 0.58, 0.55],
+		// Stage 5 - branch left (horizontal)
+		[0.45, 0.45, 0.18, 0.42],
+		[0.18, 0.42, 0.04, 0.50],
+		// Stage 6 - lower right branch
+		[0.58, 0.55, 0.72, 0.65],
+		[0.72, 0.65, 0.82, 0.75],
+		// Stage 7 - more branches
+		[0.32, 0.60, 0.28, 0.46],
+		[0.68, 0.22, 0.75, 0.08],
+		// Stage 8 - fine cracks filling corners
+		[0.62, 0.13, 0.78, 0.06],
+		[0.62, 0.13, 0.72, 0.30],
+		[0.18, 0.42, 0.10, 0.25],
+		[0.20, 0.72, 0.14, 0.88],
+		// Stage 9 - final dense cracks
+		[0.82, 0.75, 0.90, 0.85],
+		[0.04, 0.50, 0.0, 0.30],
+	]
+
 	let prevBreakRect = null
 	const renderBreakProgress = () => {
 		const breaking = survival && p.breakBlockKey && p.breakTime !== Infinity && p.breakTime > 0
@@ -10168,19 +10203,54 @@ const MineKhan = async () => {
 			ctx.clearRect(prevBreakRect.x, prevBreakRect.y, prevBreakRect.w, prevBreakRect.h)
 			prevBreakRect = null
 		}
-		if (!breaking) return
+		if (!breaking || !hitBox.pos) return
+
 		const progress = Math.min(1, (now - p.breakStart) / p.breakTime)
+		const stage = Math.min(9, Math.ceil(progress * 9)) // 0 = not started (hidden); 1-9 = crack stages
+
+		// Estimate how large the targeted block appears on screen.
+		// Camera.projection[1] = 1/tan(fov/2); object of height 1 at distance d
+		// occupies (projection[1] / d) * (height/2) pixels vertically.
+		const scale = p.projection[1] || 1.732 // fallback: ~60° fov
+		const dist = Math.max(0.5, hitBox.closest)
+		const apparentSize = scale / dist * (height / 2)
+
+		// Centre on the crosshair (block is always at screen-centre when targeted)
 		const cx = width / 2
 		const cy = height / 2
-		const r = 20
-		ctx.save()
-		ctx.strokeStyle = "rgba(255, 200, 50, 0.9)"
-		ctx.lineWidth = 3
+		const half = apparentSize / 2
+		const bx = cx - half
+		const by = cy - half
+		const pad = 2
+
+		prevBreakRect = { x: bx - pad, y: by - pad, w: apparentSize + pad * 2, h: apparentSize + pad * 2 }
+
+		// 1) Darkening overlay (gets more opaque with each stage)
+		ctx.fillStyle = `rgba(0,0,0,${0.05 + stage * 0.055})`
+		ctx.fillRect(bx, by, apparentSize, apparentSize)
+
+		// 2) Crack lines – reveal more segments per stage
+		const revealed = stage === 9 ? CRACK_SEGS.length : Math.floor(stage / 9 * CRACK_SEGS.length)
+		ctx.strokeStyle = "rgba(0,0,0,0.85)"
+		ctx.lineWidth = Math.max(1, apparentSize / 28)
 		ctx.beginPath()
-		ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * 2 * Math.PI)
+		for (let i = 0; i < revealed; i++) {
+			const [x1, y1, x2, y2] = CRACK_SEGS[i]
+			ctx.moveTo(bx + x1 * apparentSize, by + y1 * apparentSize)
+			ctx.lineTo(bx + x2 * apparentSize, by + y2 * apparentSize)
+		}
 		ctx.stroke()
-		ctx.restore()
-		prevBreakRect = { x: cx - r - 4, y: cy - r - 4, w: r * 2 + 8, h: r * 2 + 8 }
+
+		// 3) White "highlight" edge of same cracks for depth
+		ctx.strokeStyle = "rgba(255,255,255,0.25)"
+		ctx.lineWidth = Math.max(1, apparentSize / 48)
+		ctx.beginPath()
+		for (let i = 0; i < revealed; i++) {
+			const [x1, y1, x2, y2] = CRACK_SEGS[i]
+			ctx.moveTo(bx + x1 * apparentSize + 1, by + y1 * apparentSize + 1)
+			ctx.lineTo(bx + x2 * apparentSize + 1, by + y2 * apparentSize + 1)
+		}
+		ctx.stroke()
 	}
 
 	let debugLines = []
