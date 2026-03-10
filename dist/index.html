@@ -2695,8 +2695,20 @@ const blockData = [
  	name: "tnt",
  	textures: ["tntBottom", "tntTop", "tntSide"]
 	},*/
+	// Tool items – not placeable as world blocks; icons are drawn via drawToolIcons()
+	{ name: "stick",          textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenSword",    textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenPickaxe",  textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenAxe",      textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenShovel",   textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
 ].map((data, i) => new BlockData(data, i))
 blockData[0].iconImg = null // Air doesn't need an icon.
+// Tool items get custom 2D icons drawn by drawToolIcons() in main.js; suppress 3D icon generation.
+if (blockIds.stick)         blockData[blockIds.stick].iconImg         = null
+if (blockIds.woodenSword)   blockData[blockIds.woodenSword].iconImg   = null
+if (blockIds.woodenPickaxe) blockData[blockIds.woodenPickaxe].iconImg = null
+if (blockIds.woodenAxe)     blockData[blockIds.woodenAxe].iconImg     = null
+if (blockIds.woodenShovel)  blockData[blockIds.woodenShovel].iconImg  = null
 
 const BLOCK_COUNT = blockData.length
 
@@ -3329,6 +3341,7 @@ class InventoryManager {
 		if (playerCanvas) {
 			playerCanvas.onmousemove = e => this.playerPanelMouseMove(e)
 			playerCanvas.onmousedown = e => this.playerPanelMouseDown(e)
+			playerCanvas.oncontextmenu = e => e.preventDefault()
 			playerCanvas.onkeydown = window.parent.canvas.onkeydown
 			playerCanvas.onkeyup = window.parent.canvas.onkeyup
 		}
@@ -3490,6 +3503,79 @@ class InventoryManager {
 		if (blockIds.cobblestone && blockIds.bricks) {
 			this.craftingRecipes.push({ type: "shaped_2x2", pattern: [blockIds.cobblestone, blockIds.cobblestone, blockIds.cobblestone, blockIds.cobblestone], outputId: blockIds.bricks, count: 4 })
 		}
+
+		// ── Sticks ────────────────────────────────────────────────────────────
+		// Any two identical planks in any two of the four slots → 4 sticks.
+		const plankNames = [
+			"oakPlanks", "birchPlanks", "sprucePlanks", "junglePlanks",
+			"acaciaPlanks", "darkOakPlanks", "crimsonPlanks", "warpedPlanks",
+		]
+		const plankIds = plankNames.map(n => blockIds[n]).filter(Boolean)
+		if (blockIds.stick) {
+			for (const pid of plankIds) {
+				// shapeless_pair: exactly 2 slots filled with the same plank id → 4 sticks
+				this.craftingRecipes.push({ type: "shapeless_pair", inputId: pid, outputId: blockIds.stick, count: 4 })
+			}
+		}
+
+		// ── Wooden tools ──────────────────────────────────────────────────────
+		// Recipes use a 2×2 grid; patterns allow null (must be empty).
+		// Any plank type works for each tool.
+		//
+		//  Grid indices:   [0][1]
+		//                  [2][3]
+		//
+		// Wooden Sword:  [plank][null]  →  2 planks in the left column + stick bottom-right
+		//                [plank][null]     …expressed as shaped_partial below
+		//
+		// We use a single "shapeless_multi" recipe type:
+		//   inputs: [{ plank: true, count }, { id, count }]
+		//   All non-empty grid slots must satisfy the inputs exactly (no extra items).
+		if (blockIds.stick) {
+			if (blockIds.woodenSword) {
+				// 2 planks (any type) + 1 stick → 1 wooden sword
+				this.craftingRecipes.push({
+					type: "shapeless_multi",
+					inputs: [{ plank: true, count: 2 }, { id: blockIds.stick, count: 1 }],
+					outputId: blockIds.woodenSword, count: 1,
+				})
+			}
+			if (blockIds.woodenPickaxe) {
+				// 2 planks + 2 sticks → 1 wooden pickaxe
+				this.craftingRecipes.push({
+					type: "shapeless_multi",
+					inputs: [{ plank: true, count: 2 }, { id: blockIds.stick, count: 2 }],
+					outputId: blockIds.woodenPickaxe, count: 1,
+				})
+			}
+			if (blockIds.woodenAxe) {
+				// 3 planks + 1 stick → 1 wooden axe  (all 4 slots used)
+				this.craftingRecipes.push({
+					type: "shapeless_multi",
+					inputs: [{ plank: true, count: 3 }, { id: blockIds.stick, count: 1 }],
+					outputId: blockIds.woodenAxe, count: 1,
+				})
+			}
+			if (blockIds.woodenShovel) {
+				// 1 plank + 1 stick → 1 wooden shovel  (only 2 slots used)
+				this.craftingRecipes.push({
+					type: "shapeless_multi",
+					inputs: [{ plank: true, count: 1 }, { id: blockIds.stick, count: 1 }],
+					outputId: blockIds.woodenShovel, count: 1,
+				})
+			}
+		}
+	}
+
+	/** Set of all plank block IDs – used by shapeless_multi recipe matching. */
+	get _plankIds() {
+		if (this.__plankIds) return this.__plankIds
+		const names = [
+			"oakPlanks", "birchPlanks", "sprucePlanks", "junglePlanks",
+			"acaciaPlanks", "darkOakPlanks", "crimsonPlanks", "warpedPlanks",
+		]
+		this.__plankIds = new Set(names.map(n => blockIds[n]).filter(Boolean))
+		return this.__plankIds
 	}
 
 	/** Returns the recipe result for the current craft grid state, or null. */
@@ -3502,6 +3588,13 @@ class InventoryManager {
 					return { id: recipe.outputId, count: recipe.count }
 				}
 			}
+			else if (recipe.type === "shapeless_pair") {
+				// Exactly 2 identical planks, all other slots empty
+				const filled = slots.filter(Boolean)
+				if (filled.length === 2 && filled[0].id === recipe.inputId && filled[1].id === recipe.inputId) {
+					return { id: recipe.outputId, count: recipe.count }
+				}
+			}
 			else if (recipe.type === "shaped_2x2") {
 				let match = true
 				for (let i = 0; i < 4; i++) {
@@ -3510,6 +3603,40 @@ class InventoryManager {
 					if (expected !== actual) {
 						match = false
 						break
+					}
+				}
+				if (match) return { id: recipe.outputId, count: recipe.count }
+			}
+			else if (recipe.type === "shapeless_multi") {
+				// Count items in the grid and compare against the recipe inputs.
+				// Each input spec is either { plank: true, count } or { id, count }.
+				const itemCounts = new Map() // id → count
+				for (const slot of slots) {
+					if (slot) itemCounts.set(slot.id, (itemCounts.get(slot.id) || 0) + 1)
+				}
+				const plankIds = this._plankIds
+				// Tally plank count and non-plank counts separately
+				let plankCount = 0
+				const nonPlankCounts = new Map()
+				for (const [id, count] of itemCounts) {
+					if (plankIds.has(id)) plankCount += count
+					else nonPlankCounts.set(id, count)
+				}
+				let match = true
+				let expectedPlank = 0
+				for (const spec of recipe.inputs) {
+					if (spec.plank) {
+						expectedPlank += spec.count
+					} else {
+						if ((nonPlankCounts.get(spec.id) || 0) !== spec.count) { match = false; break }
+					}
+				}
+				if (match && plankCount !== expectedPlank) match = false
+				// Ensure no extra non-plank items are present beyond what the recipe requires
+				if (match) {
+					const specNonPlankIds = new Set(recipe.inputs.filter(s => !s.plank).map(s => s.id))
+					for (const id of nonPlankCounts.keys()) {
+						if (!specNonPlankIds.has(id)) { match = false; break }
 					}
 				}
 				if (match) return { id: recipe.outputId, count: recipe.count }
@@ -3566,8 +3693,11 @@ class InventoryManager {
 		const idx = this._craftSlotAt(event.offsetX, event.offsetY)
 		if (idx === -1) return
 
+		const rightClick = event.button === 2
+
 		if (idx === 4) {
 			// Output slot: take crafted result and consume 1 set of inputs
+			// (right-click behaves identically to left-click for the output slot)
 			const result = this._checkRecipes()
 			if (!result) return
 			const resultItem = new InventoryItem(result.id, blockData[result.id].name, result.count, blockData[result.id].iconImg)
@@ -3586,8 +3716,34 @@ class InventoryManager {
 				}
 			}
 		}
+		else if (rightClick) {
+			// Right-click on an input slot: place a single item from the held stack
+			const existing = this.craftSlots[idx]
+			if (this.heldItem) {
+				if (!existing) {
+					// Empty slot – place exactly 1
+					this.craftSlots[idx] = new InventoryItem(this.heldItem.id, this.heldItem.name, 1, this.heldItem.icon)
+					this.heldItem.stackSize--
+					if (this.heldItem.stackSize <= 0) this.heldItem = null
+				}
+				else if (existing.id === this.heldItem.id && existing.stackSize < 64) {
+					// Same item – add 1 to the slot
+					existing.stackSize++
+					this.heldItem.stackSize--
+					if (this.heldItem.stackSize <= 0) this.heldItem = null
+				}
+				// Different item – do nothing
+			}
+			else if (existing) {
+				// No held item: pick up half the stack (round up)
+				const take = Math.ceil(existing.stackSize / 2)
+				this.heldItem = new InventoryItem(existing.id, existing.name, take, existing.icon)
+				existing.stackSize -= take
+				if (existing.stackSize <= 0) this.craftSlots[idx] = null
+			}
+		}
 		else {
-			// Input slot: swap held item with slot contents
+			// Left-click on an input slot: swap held item with slot contents
 			const existing = this.craftSlots[idx]
 			if (this.heldItem) {
 				if (existing?.id === this.heldItem.id) {
@@ -7157,6 +7313,119 @@ const MineKhan = async () => {
 		console.log("Block icons drawn and extracted in:", Date.now() - start, "ms")
 	}
 
+	/**
+	 * Draws 2D pixel-art icons for tool items (stick, sword, pickaxe, axe, shovel)
+	 * that cannot be rendered via the 3D block-icon pipeline.
+	 */
+	const drawToolIcons = () => {
+		const SIZE = 64
+
+		// Colour palette
+		const WOOD  = "#8B5E3C" // brown handle / stick
+		const STEEL = "#C8C8C8" // light gray blade
+		const DARK  = "#555555" // dark gray shadow
+
+		/**
+		 * Creates a 64×64 canvas, draws fn(ctx, size) on it, and assigns it as
+		 * the iconImg of the named block.
+		 */
+		const makeIcon = (name, fn) => {
+			const canvas = document.createElement("canvas")
+			canvas.width = SIZE
+			canvas.height = SIZE
+			const c = canvas.getContext("2d")
+			fn(c, SIZE)
+			blockData[blockIds[name]].iconImg = canvas
+		}
+
+		// ── Stick ─────────────────────────────────────────────────────────────
+		makeIcon("stick", (c, s) => {
+			const w = s >> 3 // rod width ≈ 8 px
+			c.fillStyle = WOOD
+			// Diagonal line from top-right to bottom-left
+			for (let i = 0; i < 6; i++) {
+				const x = s * 0.65 - i * (s / 7)
+				const y = s * 0.05 + i * (s / 7)
+				c.fillRect(x | 0, y | 0, w, w)
+			}
+		})
+
+		// ── Wooden Sword ──────────────────────────────────────────────────────
+		makeIcon("woodenSword", (c, s) => {
+			const b = s >> 3
+			// Blade (gray, diagonal top-right → middle)
+			c.fillStyle = STEEL
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.62 - i * (s / 8)
+				const y = s * 0.04 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+			// Tip
+			c.fillStyle = DARK
+			c.fillRect((s * 0.70) | 0, (s * 0.00) | 0, b >> 1, b >> 1)
+			// Guard (horizontal crossbar)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.35) | 0, (s * 0.42) | 0, b * 3, b)
+			// Handle (diagonal bottom)
+			c.fillStyle = WOOD
+			for (let i = 0; i < 3; i++) {
+				const x = s * 0.38 - i * (s / 9)
+				const y = s * 0.52 + i * (s / 9)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+
+		// ── Wooden Pickaxe ────────────────────────────────────────────────────
+		makeIcon("woodenPickaxe", (c, s) => {
+			const b = s >> 3
+			// Head (horizontal bar, top area)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.10) | 0, (s * 0.10) | 0, s * 0.75, b)
+			// Left pick tip
+			c.fillRect((s * 0.10) | 0, (s * 0.18) | 0, b, b)
+			// Right pick tip
+			c.fillRect((s * 0.78) | 0, (s * 0.18) | 0, b, b)
+			// Handle (diagonal centre-left to bottom-right)
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.42 + i * (s / 10)
+				const y = s * 0.28 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+
+		// ── Wooden Axe ────────────────────────────────────────────────────────
+		makeIcon("woodenAxe", (c, s) => {
+			const b = s >> 3
+			// Axe head (L-shape, top-right)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.50) | 0, (s * 0.06) | 0, b * 2.5, b * 3)
+			// Cutting edge (left side of head)
+			c.fillStyle = STEEL
+			c.fillRect((s * 0.42) | 0, (s * 0.10) | 0, b, b * 2.5)
+			// Handle (diagonal, bottom-left)
+			c.fillStyle = WOOD
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.44 - i * (s / 10)
+				const y = s * 0.38 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+
+		// ── Wooden Shovel ─────────────────────────────────────────────────────
+		makeIcon("woodenShovel", (c, s) => {
+			const b = s >> 3
+			// Shovel head (rectangle, top)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.42) | 0, (s * 0.04) | 0, b * 2, b * 3)
+			// Handle (diagonal, extending to bottom-left)
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.44 - i * (s / 10)
+				const y = s * 0.38 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+	}
+
 	let indexBuffer
 
 	let matrix = new Float32Array(16) // A temperary matrix that may store random data.
@@ -7935,6 +8204,8 @@ const MineKhan = async () => {
 	}
 	const newWorldBlock = () => {
 		if(!hitBox.pos || !holding) return
+		// Prevent non-placeable items (tools, sticks, etc.) from being placed
+		if (blockData[holding]?.placeable === false) return
 		let pos = hitBox.pos, [x, y, z] = pos
 		switch(hitBox.face) {
 			case "top":
@@ -11130,6 +11401,7 @@ const MineKhan = async () => {
 		}
 
 		genIcons() // Generate all the block icons
+		drawToolIcons() // Draw 2D icons for tool items (stick, sword, pickaxe, axe, shovel)
 		initDirt()
 
 		drawScreens[screen]()
