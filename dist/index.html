@@ -7229,9 +7229,16 @@ const MineKhan = async () => {
 			let y = (this.y - this.py) * diff + this.py
 			let z = (this.z - this.pz) * diff + this.pz
 			this.transformation.copyMatrix(defaultTransformation)
-			if (this.rx) this.transformation.rotX(this.rx)
+			// Head bob: vertical dip + slight pitch nod on each stride
+			const bobAmp = this.bobAmp || 0
+			const bobPhase = this.walkPhase || 0
+			const rxBob = this.rx + bobAmp * sin(bobPhase * 2) * 0.012
+			if (rxBob) this.transformation.rotX(rxBob)
+			else if (this.rx) this.transformation.rotX(this.rx)
 			if (this.ry) this.transformation.rotY(this.ry)
-			this.transformation.translate(-x, -y, -z)
+			// Camera dips downward twice per stride cycle (foot-strike impact feel)
+			const yBob = bobAmp * (cos(bobPhase * 2) - 1) * 0.025
+			this.transformation.translate(-x, -(y + yBob), -z)
 		}
 		getMatrix() {
 			let proj = this.projection
@@ -7759,6 +7766,66 @@ const MineKhan = async () => {
 	 * Returns the time in milliseconds required to break the given block in survival mode.
 	 * @param {Number} blockId
 	 */
+	// ── Synthetic block sounds via Web Audio API ──────────────────────────
+	let audioCtx = null
+	let lastFootstepTime = 0
+	const getAudioCtx = () => {
+		if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+		return audioCtx
+	}
+
+	const playSound = (type) => {
+		try {
+			const ctx = getAudioCtx()
+			const startTime = ctx.currentTime
+			const gain = ctx.createGain()
+			gain.connect(ctx.destination)
+
+			if (type === "break" || type === "place") {
+				// Filtered noise burst
+				const bufLen = ctx.sampleRate * 0.12
+				const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate)
+				const data = buf.getChannelData(0)
+				for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1
+				const src = ctx.createBufferSource()
+				src.buffer = buf
+
+				const filter = ctx.createBiquadFilter()
+				if (type === "break") {
+					filter.type = "bandpass"
+					filter.frequency.value = 800
+					filter.Q.value = 0.8
+					gain.gain.setValueAtTime(0.18, startTime)
+					gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12)
+				}
+				else {
+					filter.type = "lowpass"
+					filter.frequency.value = 500
+					gain.gain.setValueAtTime(0.22, startTime)
+					gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08)
+				}
+				src.connect(filter)
+				filter.connect(gain)
+				src.start(startTime)
+				src.stop(startTime + 0.15)
+			}
+			else if (type === "footstep") {
+				// Subtle low thud for footstep
+				const osc = ctx.createOscillator()
+				osc.type = "sine"
+				osc.frequency.setValueAtTime(120, startTime)
+				osc.frequency.exponentialRampToValueAtTime(40, startTime + 0.06)
+				gain.gain.setValueAtTime(0.08, startTime)
+				gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.07)
+				osc.connect(gain)
+				osc.start(startTime)
+				osc.stop(startTime + 0.08)
+			}
+		}
+		catch(e) { /* AudioContext unavailable */ }
+	}
+	// ──────────────────────────────────────────────────────────────────────
+
 	const getBreakTime = (blockId) => {
 		const data = blockData[blockId & 0x3ff]
 		if (!data || !data.solid) return 0
@@ -7846,6 +7913,7 @@ const MineKhan = async () => {
 		world.setBlock(x, y, z, t, 0)
 		if (t) {
 			p.lastPlace = now
+			playSound("place")
 			// Survival mode: consume the placed block from inventory
 			if (survival) {
 				const heldItem = inventory.hotbar.hand
@@ -7862,6 +7930,7 @@ const MineKhan = async () => {
 		}
 		else {
 			p.lastBreak = now
+			playSound("break")
 		}
 	}
 	const newWorldBlock = () => {
@@ -10850,6 +10919,10 @@ const MineKhan = async () => {
 		p.breakStart = 0
 		p.breakTime = Infinity
 
+		// Head bob state
+		p.walkPhase = 0  // Stride phase angle (radians)
+		p.bobAmp = 0     // Current bob amplitude (smoothly transitions)
+
 		p.minX = () => roundBits(p.x - p.w - p2.x)
 		p.minY = () => roundBits(p.y - p.bottomH - p2.y)
 		p.minZ = () => roundBits(p.z - p.w - p2.z)
@@ -11219,6 +11292,30 @@ const MineKhan = async () => {
 			controls()
 			runGravity()
 			resolveContactsAndUpdatePosition()
+
+			// Head bob: update stride phase and amplitude each tick
+			if (!p.spectator && !p.flying) {
+				const hSpeed = sqrt(p.velocity.x * p.velocity.x + p.velocity.z * p.velocity.z)
+				const moving = hSpeed > 0.015 && p.onGround
+				const targetAmp = moving ? p.sprinting ? 1.4 : 1.0 : 0
+				p.bobAmp += (targetAmp - p.bobAmp) * 0.18
+				if (p.bobAmp < 0.01) p.bobAmp = 0
+				if (moving) {
+					const prevPhase = p.walkPhase
+					p.walkPhase += hSpeed * 3.8
+					// Detect each half-stride completion (zero-crossings of sin) for footstep sounds
+					// Guard with a minimum interval to prevent overlapping sounds
+					const crossed = floor(prevPhase / Math.PI) !== floor(p.walkPhase / Math.PI)
+					if (crossed && now - lastFootstepTime > 250) {
+						lastFootstepTime = now
+						playSound("footstep")
+					}
+				}
+			}
+			else {
+				p.bobAmp *= 0.8
+				if (p.bobAmp < 0.01) p.bobAmp = 0
+			}
 
 			// Survival mode: hunger, health, and fall damage
 			if (survival && !p.spectator) {
