@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- @MineKhan version Alpha 0.8.2
+<!-- @MineKhan version Alpha 0.8.3
 
 	NOTE:
 The "Save" button saves your world to your local browser. Nobody else can see it. However, if you're on a public or shared computer, that save may be deleted unexpectedly. So it's a good idea to keep a safe copy of your save string somewhere where it won't be deleted.
@@ -220,11 +220,30 @@ input[type=text]:focus {
 }
 #inv-container {
 	z-index: 1;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	background: #c6c6c6;
+	border: 3px solid;
+	border-top-color: #ffffff;
+	border-left-color: #ffffff;
+	border-right-color: #555555;
+	border-bottom-color: #555555;
+	padding: 7px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	image-rendering: pixelated;
 }
 #inv-scroll {
-	height: calc(100vh - (min(100vh, 100vw) / 3.25));
+	height: auto;
+	max-height: calc(50vh - 100px);
 	overflow-y: auto;
-	border-bottom: solid 2px lightgray;
+	border-bottom: none;
+}
+#inv-player-canvas {
+	display: block;
+	image-rendering: pixelated;
 }
 #controls-page {
 	z-index: 1;
@@ -295,6 +314,7 @@ input[type=text]:focus {
 				<!-- This is very very important: canvases need that tabindex thing to capture keyboard events. Idk why. But I spent hours trying to figure it out. -->
 				<canvas id="container" tabindex="0"></canvas>
 			</div>
+			<canvas id="inv-player-canvas" tabindex="0"></canvas>
 			<canvas id="inventory" tabindex="0"></canvas>
 		</div>
 		<canvas id="hotbar" class="hidden center-div"></canvas>
@@ -2798,6 +2818,95 @@ const heldCtx = heldItemCanvas.getContext("2d")
  */
 const hoverBox = document.getElementById("onhover")
 
+/**
+ * Draws a single Minecraft-style inset slot background.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} x
+ * @param {Number} y
+ * @param {Number} size
+ */
+const drawSlot = (ctx, x, y, size) => {
+	const b = Math.max(1, size >> 4) // border ≈ 1/16 of slot size
+	ctx.fillStyle = "#8b8b8b"
+	ctx.fillRect(x, y, size, size)
+	// Top/left dark edges (recessed look)
+	ctx.fillStyle = "#373737"
+	ctx.fillRect(x, y, size, b)
+	ctx.fillRect(x, y, b, size)
+	// Bottom/right light edges
+	ctx.fillStyle = "#ffffff"
+	ctx.fillRect(x, y + size - b, size, b)
+	ctx.fillRect(x + size - b, y, b, size)
+}
+
+/**
+ * Draws a simple Steve-like player figure on a 2D canvas.
+ * The figure is 16 pixels wide × 32 pixels tall in "block pixels";
+ * `sc` is the scale factor (pixels per block-pixel).
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} cx  Centre-X of the figure
+ * @param {Number} ty  Top-Y of the figure
+ * @param {Number} sc  Scale factor
+ */
+/**
+ * Draws a right-pointing arrow for the crafting output indicator.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} fromX  Left edge of the arrow
+ * @param {Number} centerY  Vertical centre
+ * @param {Number} w  Total width of the arrow
+ */
+const drawArrow = (ctx, fromX, centerY, w) => {
+	const bodyH = Math.max(2, w * 0.2 | 0)
+	const headH = Math.max(4, w * 0.5 | 0)
+	const headW = Math.max(4, w * 0.35 | 0)
+	const bodyW = w - headW
+	ctx.fillStyle = "#555555"
+	ctx.fillRect(fromX, centerY - (bodyH >> 1), bodyW, bodyH)
+	ctx.beginPath()
+	ctx.moveTo(fromX + bodyW, centerY - (headH >> 1))
+	ctx.lineTo(fromX + w, centerY)
+	ctx.lineTo(fromX + bodyW, centerY + (headH >> 1))
+	ctx.closePath()
+	ctx.fill()
+}
+
+const drawPlayerModel = (ctx, cx, ty, sc) => {
+	sc = Math.max(1, sc)
+	// Head (8×8)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx - 4*sc, ty, 8*sc, 8*sc)
+	// Hair detail
+	ctx.fillStyle = "#6b4226"
+	ctx.fillRect(cx - 4*sc, ty, 8*sc, 2*sc)           // top
+	ctx.fillRect(cx - 4*sc, ty + 2*sc, sc, 5*sc)      // left side
+	ctx.fillRect(cx + 3*sc, ty + 2*sc, sc, 5*sc)      // right side
+	// Eyes
+	ctx.fillStyle = "#111111"
+	ctx.fillRect(cx - 2*sc, ty + 3*sc, sc, 2*sc)      // left eye
+	ctx.fillRect(cx + sc,   ty + 3*sc, sc, 2*sc)      // right eye
+	// Body (8×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx - 4*sc, ty + 8*sc, 8*sc, 12*sc)
+	// Left arm (4×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx - 8*sc, ty + 8*sc, 4*sc, 8*sc)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx - 8*sc, ty + 16*sc, 4*sc, 4*sc)  // left hand
+	// Right arm (4×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx + 4*sc, ty + 8*sc, 4*sc, 8*sc)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx + 4*sc, ty + 16*sc, 4*sc, 4*sc)  // right hand
+	// Legs (each 4×12)
+	ctx.fillStyle = "#3d5a8a"
+	ctx.fillRect(cx - 4*sc, ty + 20*sc, 4*sc, 10*sc) // left leg
+	ctx.fillRect(cx,        ty + 20*sc, 4*sc, 10*sc) // right leg
+	// Boots
+	ctx.fillStyle = "#2a2a2a"
+	ctx.fillRect(cx - 4*sc, ty + 30*sc, 4*sc, 2*sc)  // left boot
+	ctx.fillRect(cx,        ty + 30*sc, 4*sc, 2*sc)  // right boot
+}
+
 const displayHoverText = (text, mouseX, mouseY) => {
 	hoverBox.textContent = text
 	hoverBox.classList.remove("hidden")
@@ -2936,26 +3045,17 @@ class InventoryPage {
 		this.ctx.canvas.height = top + this.height + 10 // Clears the canvas like ctx.clearRect
 		this.ctx.canvas.width = this.width + left * 2
 
+		// Draw slot backgrounds (dark inset slots)
+		for (let i = 0; i < this.size; i++) {
+			drawSlot(this.ctx, left + i % 9 * slotSize, top + (i / 9 | 0) * slotSize, slotSize)
+		}
+
 		// Draw the blocks
 		let drawn = 0
 		for (let py = 0; drawn < this.size; py++) {
 			this.renderRow(left, top + py * slotSize, slotSize, drawn)
 			drawn += 9
 		}
-
-		// Draw the grid
-		this.ctx.lineWidth = 4
-		this.ctx.strokeStyle = "black"
-		this.ctx.beginPath()
-		for (let y = 0; y <= this.height; y += slotSize) {
-			this.ctx.moveTo(left,              top + y)
-			this.ctx.lineTo(left + this.width, top + y)
-		}
-		for (let x = 0; x <= this.width; x += slotSize) {
-			this.ctx.moveTo(left + x, top)
-			this.ctx.lineTo(left + x, top + this.height)
-		}
-		this.ctx.stroke()
 	}
 	/**
 	 * @param {MouseEvent} event
@@ -2966,23 +3066,25 @@ class InventoryPage {
 		const overIndex = this.indexAt(mouseX, mouseY)
 		if (this.items[overIndex]) displayHoverText(this.items[overIndex].name, event.x, event.y)
 		if (this.hoverIndex === overIndex) return
-		this.ctx.lineWidth = 4
+		this.ctx.lineWidth = 2
 
-		// Clear the previous highlight
+		// Restore the previous slot (redraw background + item)
 		if (this.hoverIndex >= 0) {
-			this.ctx.strokeStyle = "black"
 			const x = this.hoverIndex % 9 * this.slotSize + this.left
 			const y = (this.hoverIndex / 9 | 0) * this.slotSize + this.top
-			this.ctx.strokeRect(x, y, this.slotSize, this.slotSize)
+			drawSlot(this.ctx, x, y, this.slotSize)
+			if (this.items[this.hoverIndex]?.icon) {
+				this.items[this.hoverIndex].render(this.ctx, x, y, this.slotSize)
+			}
 		}
 		this.hoverIndex = overIndex
 
-		// Draw new highlight and hover text
+		// Draw new highlight
 		if (overIndex >= 0 && this.items[overIndex]?.icon) {
 			this.ctx.strokeStyle = "white"
 			const x = overIndex % 9 * this.slotSize + this.left
 			const y = (overIndex / 9 | 0) * this.slotSize + this.top
-			this.ctx.strokeRect(x, y, this.slotSize, this.slotSize)
+			this.ctx.strokeRect(x + 1, y + 1, this.slotSize - 2, this.slotSize - 2)
 		}
 		else hoverBox.classList.add("hidden")
 	}
@@ -3017,13 +3119,13 @@ class InventoryPage {
 		// Redraw the tile
 		const x = this.hoverIndex % 9 * this.slotSize + this.left
 		const y = (this.hoverIndex / 9 | 0) * this.slotSize + this.top
-		this.ctx.clearRect(x, y, this.slotSize, this.slotSize)
+		drawSlot(this.ctx, x, y, this.slotSize)
 		if (this.items[this.hoverIndex]) {
 			this.items[this.hoverIndex].render(this.ctx, x, y, this.slotSize)
+			this.ctx.lineWidth = 2
 			this.ctx.strokeStyle = "white"
+			this.ctx.strokeRect(x + 1, y + 1, this.slotSize - 2, this.slotSize - 2)
 		}
-		else invCtx.strokeStyle = "black"
-		invCtx.strokeRect(x, y, this.slotSize, this.slotSize)
 
 		return old
 	}
@@ -3143,6 +3245,11 @@ class InventoryManager {
 	 */
 	heldItem = null
 
+	/** 2×2 crafting input slots (0-3) + output slot (4) */
+	craftSlots = Array(5).fill(null)
+	craftingRecipes = []
+	craftArea = null
+
 	// Don't initialize the inventory before the icons have been generated!
 	init(creative) {
 		// Creative Inventories
@@ -3212,6 +3319,19 @@ class InventoryManager {
 				this.hotbar[i] = storage.items[i + 27]?.id || 0
 			}
 		}
+
+		// Render the player panel with a default name; overwritten with the real name on open
+		this._initRecipes()
+		this.renderPlayerPanel("Player")
+
+		// Player panel mouse handlers (for crafting grid interaction)
+		const playerCanvas = document.getElementById("inv-player-canvas")
+		if (playerCanvas) {
+			playerCanvas.onmousemove = e => this.playerPanelMouseMove(e)
+			playerCanvas.onmousedown = e => this.playerPanelMouseDown(e)
+			playerCanvas.onkeydown = window.parent.canvas.onkeydown
+			playerCanvas.onkeyup = window.parent.canvas.onkeyup
+		}
 	}
 
 	render() {
@@ -3221,14 +3341,16 @@ class InventoryManager {
 
 		this.containers[this.currentPage].render(left, top + tileSize + 5, tileSize)
 
+		// Draw each category tab with styled slot background
 		for (let i = 0; i < this.containers.length; i++) {
 			const inv = this.containers[i]
+			drawSlot(contCtx, left + i * tileSize, top, tileSize)
 			contCtx.drawImage(inv.icon, left + i * tileSize, top, tileSize, tileSize)
-			contCtx.strokeStyle = "red"
-			contCtx.strokeRect(left + tileSize * i, top, tileSize, tileSize)
 		}
-		contCtx.strokeStyle = "green"
-		contCtx.strokeRect(left + tileSize * this.currentPage, top, tileSize, tileSize)
+		// Highlight the active tab
+		contCtx.lineWidth = 2
+		contCtx.strokeStyle = "white"
+		contCtx.strokeRect(left + tileSize * this.currentPage + 1, top + 1, tileSize - 2, tileSize - 2)
 	}
 
 	/**
@@ -3267,7 +3389,244 @@ class InventoryManager {
 		if (this.playerStorage) {
 			this.playerStorage.render(10, 10, newSize)
 			this.render()
+			this.renderPlayerPanel(this.playerName)
 		}
+	}
+
+	/**
+	 * Renders the player model + armor slots + 2×2 crafting grid panel.
+	 * @param {String} [playerName]
+	 */
+	renderPlayerPanel(playerName) {
+		this.playerName = playerName || this.playerName || "Player"
+		const canvas = document.getElementById("inv-player-canvas")
+		if (!canvas) return
+		const s = this.iconSize
+		const pad = 10
+		const W = 9 * s + pad * 2
+		const H = 4 * s + pad * 2
+
+		canvas.width = W
+		canvas.height = H
+
+		const ctx = canvas.getContext("2d")
+
+		// --- Armor slots: left column (4 stacked slots) ---
+		for (let i = 0; i < 4; i++) {
+			drawSlot(ctx, pad, pad + i * s, s)
+		}
+
+		// --- Player model: 3-slot-wide area in the centre-left ---
+		const modelAreaX = pad + s + 4
+		const modelAreaW = 3 * s
+		// sc = floor(s/8); model is 32*sc px tall which fits in the 4*s panel height
+		const sc = Math.max(1, s >> 3)
+		const modelH = 32 * sc
+		const modelCX = modelAreaX + (modelAreaW >> 1)
+		// >> has lower precedence than -, so (4*s - modelH) is shifted; vertically centres the model
+		const modelTY = pad + (4 * s - modelH >> 1)
+		drawPlayerModel(ctx, modelCX, modelTY, sc)
+
+		// Player name centred below the model
+		const nameFont = Math.max(8, s * 0.27 | 0)
+		ctx.font = `${nameFont}px monospace`
+		ctx.fillStyle = "#555555"
+		ctx.textAlign = "center"
+		ctx.fillText(this.playerName, modelCX, pad + 4 * s - 2)
+
+		// --- 2×2 crafting grid (right of player model) ---
+		const gx = modelAreaX + modelAreaW + 8
+		const gy = pad + s  // vertically centred: (4 rows - 2 rows) / 2 = 1 row offset
+
+		// Input slots (2 columns × 2 rows)
+		for (let row = 0; row < 2; row++) {
+			for (let col = 0; col < 2; col++) {
+				const sx = gx + col * s
+				const sy = gy + row * s
+				drawSlot(ctx, sx, sy, s)
+				const slot = this.craftSlots[row * 2 + col]
+				if (slot?.icon) slot.render(ctx, sx, sy, s)
+			}
+		}
+
+		// Arrow pointing right
+		const arrowW = Math.max(12, s * 0.6 | 0)
+		const arrowX = gx + 2 * s + 4
+		drawArrow(ctx, arrowX, gy + s, arrowW)
+
+		// Output slot (vertically centred in the 2-row grid)
+		const ox = arrowX + arrowW + 4
+		const oy = gy + (s >> 1)
+		drawSlot(ctx, ox, oy, s)
+		if (this.craftSlots[4]?.icon) this.craftSlots[4].render(ctx, ox, oy, s)
+
+		// Store craft area coords for hit-testing
+		this.craftArea = { gx, gy, ox, oy, s }
+	}
+
+	/**
+	 * Initialises the crafting recipe list from blockIds.
+	 */
+	_initRecipes() {
+		this.craftingRecipes = []
+		const logPlanks = [
+			["oakLog", "oakPlanks"],
+			["birchLog", "birchPlanks"],
+			["spruceLog", "sprucePlanks"],
+			["jungleLog", "junglePlanks"],
+			["acaciaLog", "acaciaPlanks"],
+			["darkOakLog", "darkOakPlanks"],
+			["crimsonStem", "crimsonPlanks"],
+			["warpedStem", "warpedPlanks"],
+		]
+		for (const [log, plank] of logPlanks) {
+			if (blockIds[log] && blockIds[plank]) {
+				this.craftingRecipes.push({ type: "shapeless_single", inputId: blockIds[log], outputId: blockIds[plank], count: 4 })
+			}
+		}
+		if (blockIds.stone && blockIds.stoneBricks) {
+			this.craftingRecipes.push({ type: "shaped_2x2", pattern: [blockIds.stone, blockIds.stone, blockIds.stone, blockIds.stone], outputId: blockIds.stoneBricks, count: 4 })
+		}
+		if (blockIds.cobblestone && blockIds.bricks) {
+			this.craftingRecipes.push({ type: "shaped_2x2", pattern: [blockIds.cobblestone, blockIds.cobblestone, blockIds.cobblestone, blockIds.cobblestone], outputId: blockIds.bricks, count: 4 })
+		}
+	}
+
+	/** Returns the recipe result for the current craft grid state, or null. */
+	_checkRecipes() {
+		const slots = this.craftSlots.slice(0, 4)
+		for (const recipe of this.craftingRecipes) {
+			if (recipe.type === "shapeless_single") {
+				const filled = slots.filter(Boolean)
+				if (filled.length === 1 && filled[0].id === recipe.inputId) {
+					return { id: recipe.outputId, count: recipe.count }
+				}
+			}
+			else if (recipe.type === "shaped_2x2") {
+				let match = true
+				for (let i = 0; i < 4; i++) {
+					const expected = recipe.pattern[i]
+					const actual = slots[i]?.id ?? null
+					if (expected !== actual) {
+						match = false
+						break
+					}
+				}
+				if (match) return { id: recipe.outputId, count: recipe.count }
+			}
+		}
+		return null
+	}
+
+	/** Recomputes the craft output slot from the current inputs and redraws the panel. */
+	_updateCraftOutput() {
+		const result = this._checkRecipes()
+		if (result) {
+			this.craftSlots[4] = new InventoryItem(result.id, blockData[result.id].name, result.count, blockData[result.id].iconImg)
+		}
+		else {
+			this.craftSlots[4] = null
+		}
+		this.renderPlayerPanel(this.playerName)
+	}
+
+	/**
+	 * Returns which crafting slot (0-3 input, 4 output, -1 none) the coordinate hits.
+	 * @param {Number} x
+	 * @param {Number} y
+	 */
+	_craftSlotAt(x, y) {
+		if (!this.craftArea) return -1
+		const { gx, gy, ox, oy, s } = this.craftArea
+		for (let row = 0; row < 2; row++) {
+			for (let col = 0; col < 2; col++) {
+				const sx = gx + col * s
+				const sy = gy + row * s
+				if (x >= sx && x < sx + s && y >= sy && y < sy + s) return row * 2 + col
+			}
+		}
+		if (x >= ox && x < ox + s && y >= oy && y < oy + s) return 4
+		return -1
+	}
+
+	/**
+	 * @param {MouseEvent} event
+	 */
+	playerPanelMouseMove(event) {
+		const idx = this._craftSlotAt(event.offsetX, event.offsetY)
+		const item = idx >= 0 ? this.craftSlots[idx] : null
+		if (item) displayHoverText(item.name, event.x, event.y)
+		else hoverBox.classList.add("hidden")
+	}
+
+	/**
+	 * @param {MouseEvent} event
+	 */
+	playerPanelMouseDown(event) {
+		const idx = this._craftSlotAt(event.offsetX, event.offsetY)
+		if (idx === -1) return
+
+		if (idx === 4) {
+			// Output slot: take crafted result and consume 1 set of inputs
+			const result = this._checkRecipes()
+			if (!result) return
+			const resultItem = new InventoryItem(result.id, blockData[result.id].name, result.count, blockData[result.id].iconImg)
+			if (!this.heldItem) {
+				this.heldItem = resultItem
+			}
+			else if (this.heldItem.id === result.id && this.heldItem.stackSize + result.count <= 64) {
+				this.heldItem.stackSize += result.count
+			}
+			else return // Hand full with a different item
+			// Consume 1 of each occupied input slot
+			for (let i = 0; i < 4; i++) {
+				if (this.craftSlots[i]) {
+					this.craftSlots[i].stackSize--
+					if (this.craftSlots[i].stackSize <= 0) this.craftSlots[i] = null
+				}
+			}
+		}
+		else {
+			// Input slot: swap held item with slot contents
+			const existing = this.craftSlots[idx]
+			if (this.heldItem) {
+				if (existing?.id === this.heldItem.id) {
+					existing.stackSize += this.heldItem.stackSize
+					this.heldItem = null
+				}
+				else {
+					this.craftSlots[idx] = this.heldItem.copy()
+					this.heldItem = existing
+				}
+			}
+			else {
+				this.heldItem = existing
+				this.craftSlots[idx] = null
+			}
+		}
+
+		this._updateCraftOutput()
+
+		if (this.heldItem) {
+			heldItemCanvas.classList.remove("hidden")
+			heldCtx.clearRect(0, 0, this.iconSize, this.iconSize)
+			this.heldItem.render(heldCtx, 0, 0, this.iconSize)
+		}
+		else heldItemCanvas.classList.add("hidden")
+	}
+
+	/**
+	 * Returns any items left in the crafting grid to the player's storage.
+	 * Call this when closing the inventory.
+	 */
+	returnCraftItems() {
+		for (let i = 0; i < 4; i++) {
+			if (this.craftSlots[i]) {
+				this.playerStorage?.addItem(this.craftSlots[i])
+				this.craftSlots[i] = null
+			}
+		}
+		this.craftSlots[4] = null
 	}
 }
 
@@ -6146,10 +6505,11 @@ const MineKhan = async () => {
 	}
 
 	// Globals
-	let version = "Alpha 0.8.2"
+	let version = "Alpha 0.8.3"
 	let superflat = false
 	let details = true
 	let caves = true
+	let survival = false
 
 	/**
 	 * @type {WebGLRenderingContext}*/
@@ -6309,6 +6669,7 @@ const MineKhan = async () => {
 			onenter: () => {
 				win.boxCenterTop.placeholder = "Enter World Name"
 				win.boxCenterTop.value = ""
+				survival = false // Reset to creative by default when entering creation menu
 			}
 		},
 		loading: {
@@ -6343,6 +6704,22 @@ const MineKhan = async () => {
 			onenter: () => {
 				ctx.clearRect(0, 0, width, height) // Hide the GUI and text and stuff
 				inventory.playerStorage.render()
+				inventory.renderPlayerPanel(currentUser.username)
+				// In survival mode, hide the creative inventory container
+				const invScroll = document.getElementById('inv-scroll')
+				if (invScroll) {
+					if (survival) invScroll.classList.add('hidden')
+					else invScroll.classList.remove('hidden')
+				}
+			},
+			onexit: () => {
+				// Return crafting-grid items to storage and drop held item
+				inventory.returnCraftItems()
+				if (inventory.heldItem) {
+					inventory.playerStorage?.addItem(inventory.heldItem)
+					inventory.heldItem = null
+				}
+				inventory.hotbar.render()
 			}
 		},
 		controls: {
@@ -6852,9 +7229,16 @@ const MineKhan = async () => {
 			let y = (this.y - this.py) * diff + this.py
 			let z = (this.z - this.pz) * diff + this.pz
 			this.transformation.copyMatrix(defaultTransformation)
-			if (this.rx) this.transformation.rotX(this.rx)
+			// Head bob: vertical dip + slight pitch nod on each stride
+			const bobAmp = this.bobAmp || 0
+			const bobPhase = this.walkPhase || 0
+			const rxBob = this.rx + bobAmp * sin(bobPhase * 2) * 0.012
+			if (rxBob) this.transformation.rotX(rxBob)
+			else if (this.rx) this.transformation.rotX(this.rx)
 			if (this.ry) this.transformation.rotY(this.ry)
-			this.transformation.translate(-x, -y, -z)
+			// Camera dips downward twice per stride cycle (foot-strike impact feel)
+			const yBob = bobAmp * (cos(bobPhase * 2) - 1) * 0.025
+			this.transformation.translate(-x, -(y + yBob), -z)
 		}
 		getMatrix() {
 			let proj = this.projection
@@ -7378,6 +7762,89 @@ const MineKhan = async () => {
 		gl.uniform1f(glCache.uZoffset, 0)
 	}
 
+	/**
+	 * Returns the time in milliseconds required to break the given block in survival mode.
+	 * @param {Number} blockId
+	 */
+	// ── Synthetic block sounds via Web Audio API ──────────────────────────
+	let audioCtx = null
+	let lastFootstepTime = 0
+	const getAudioCtx = () => {
+		if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+		return audioCtx
+	}
+
+	const playSound = (type) => {
+		try {
+			const ctx = getAudioCtx()
+			const startTime = ctx.currentTime
+			const gain = ctx.createGain()
+			gain.connect(ctx.destination)
+
+			if (type === "break" || type === "place") {
+				// Filtered noise burst
+				const bufLen = ctx.sampleRate * 0.12
+				const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate)
+				const data = buf.getChannelData(0)
+				for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1
+				const src = ctx.createBufferSource()
+				src.buffer = buf
+
+				const filter = ctx.createBiquadFilter()
+				if (type === "break") {
+					filter.type = "bandpass"
+					filter.frequency.value = 800
+					filter.Q.value = 0.8
+					gain.gain.setValueAtTime(0.18, startTime)
+					gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12)
+				}
+				else {
+					filter.type = "lowpass"
+					filter.frequency.value = 500
+					gain.gain.setValueAtTime(0.22, startTime)
+					gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08)
+				}
+				src.connect(filter)
+				filter.connect(gain)
+				src.start(startTime)
+				src.stop(startTime + 0.15)
+			}
+			else if (type === "footstep") {
+				// Subtle low thud for footstep
+				const osc = ctx.createOscillator()
+				osc.type = "sine"
+				osc.frequency.setValueAtTime(120, startTime)
+				osc.frequency.exponentialRampToValueAtTime(40, startTime + 0.06)
+				gain.gain.setValueAtTime(0.08, startTime)
+				gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.07)
+				osc.connect(gain)
+				osc.start(startTime)
+				osc.stop(startTime + 0.08)
+			}
+		}
+		catch(e) { /* AudioContext unavailable */ }
+	}
+	// ──────────────────────────────────────────────────────────────────────
+
+	const getBreakTime = (blockId) => {
+		const data = blockData[blockId & 0x3ff]
+		if (!data || !data.solid) return 0
+		const name = data.name || ""
+		if (name === "Bedrock") return Infinity
+		if (name === "Obsidian" || name === "Crying Obsidian") return 9000
+		if (name.includes("Stone") || name.includes("Cobblestone") || name.includes("Brick")
+			|| name.includes("Ore") || name.includes("Deepslate") || name.includes("Prismarine")
+			|| name.includes("Andesite") || name.includes("Diorite") || name.includes("Granite")
+			|| name.includes("Quartz") || name.includes("Netherrack") || name.includes("Blackstone")
+			|| name.includes("Basalt")) return 3000
+		if (name.includes("Dirt") || name.includes("Grass") || name.includes("Sand")
+			|| name.includes("Gravel") || name.includes("Soul")) return 750
+		if (name.includes("Log") || name.includes("Planks") || name.includes("Fence")
+			|| name.includes("Bookshelf") || name.includes("Stem")) return 1500
+		if (name.includes("Wool") || name.includes("Concrete")) return 1000
+		return 1500
+	}
+
 	const changeWorldBlock = (t, x, y, z) => {
 		if (!hitBox.pos) return
 		x ??= hitBox.pos[0]
@@ -7406,6 +7873,12 @@ const MineKhan = async () => {
 			t |= FLIP
 		}
 
+		// Survival mode: check inventory before placing a block
+		if (t && survival) {
+			const heldItem = inventory.hotbar.hand
+			if (!heldItem || heldItem.id !== (t & 0x3ff) || heldItem.stackSize <= 0) return
+		}
+
 		// Check for block collision with player
 		const newBlock = blockData[t]
 		if (newBlock.solid) {
@@ -7428,12 +7901,36 @@ const MineKhan = async () => {
 			if (ppx > nx && ppy > ny && ppz > nz && pnx < px && pny < py && pnz < pz) return
 		}
 
+		// Survival mode: collect the block before removing it
+		if (!t && survival) {
+			const oldBlock = world.getBlock(x, y, z) & 0x3ff
+			if (oldBlock && blockData[oldBlock]?.solid) {
+				inventory.playerStorage.addItem(new InventoryItem(oldBlock, blockData[oldBlock].name, 1, blockData[oldBlock].iconImg))
+				inventory.hotbar.render()
+			}
+		}
+
 		world.setBlock(x, y, z, t, 0)
 		if (t) {
 			p.lastPlace = now
+			playSound("place")
+			// Survival mode: consume the placed block from inventory
+			if (survival) {
+				const heldItem = inventory.hotbar.hand
+				if (heldItem && heldItem.stackSize > 1) {
+					heldItem.stackSize--
+					inventory.hotbar.render()
+				}
+				else if (heldItem) {
+					inventory.playerStorage.items[inventory.hotbar.index] = null
+					inventory.hotbar.render()
+					holding = 0
+				}
+			}
 		}
 		else {
 			p.lastBreak = now
+			playSound("break")
 		}
 	}
 	const newWorldBlock = () => {
@@ -8485,8 +8982,33 @@ const MineKhan = async () => {
 				this.chunkGenQueue.sort(sortChunks)
 			}
 
-			if (controlMap.breakBlock.pressed && (p.lastBreak < now - 250 || p.autoBreak) && screen === "play") {
-				changeWorldBlock(0)
+			if (controlMap.breakBlock.pressed && screen === "play") {
+				if (survival && !p.autoBreak) {
+					// Progressive breaking: track the block being broken
+					const pos = hitBox.pos
+					if (pos) {
+						const key = `${pos[0]},${pos[1]},${pos[2]}`
+						if (p.breakBlockKey !== key) {
+							p.breakBlockKey = key
+							p.breakStart = now
+							const blockId = world.getBlock(pos[0], pos[1], pos[2]) & 0x3ff
+							p.breakTime = getBreakTime(blockId)
+						}
+						else if (p.breakTime !== Infinity && now - p.breakStart >= p.breakTime) {
+							changeWorldBlock(0)
+							p.breakBlockKey = null
+						}
+					}
+					else {
+						p.breakBlockKey = null
+					}
+				}
+				else if (p.lastBreak < now - 250 || p.autoBreak) {
+					changeWorldBlock(0)
+				}
+			}
+			else if (survival) {
+				p.breakBlockKey = null
 			}
 
 			for (let i = 0; i < this.sortedChunks.length; i++) {
@@ -8762,6 +9284,11 @@ const MineKhan = async () => {
 			}
 			bab.add(inventory.hotbar.index - inventory.hotbar.start, 4)
 
+			// Alpha 0.8.3+ survival mode data
+			bab.add(survival ? 1 : 0, 1)
+			bab.add(min(round(p.health ?? 20), 20), 5)
+			bab.add(min(round(p.hunger ?? 20), 20), 5)
+
 			for (let chunk of this.loaded) {
 				let chunkData = chunk.getSave()
 				if (chunkData) bab.append(chunkData)
@@ -8847,6 +9374,11 @@ const MineKhan = async () => {
 				caves = reader.read(1)
 				details = reader.read(1)
 
+				// Old format has no survival data; default to creative
+				survival = false
+				p.health = 20
+				p.hunger = 20
+
 				reader.bit += 24 // Version; we already have that.
 
 				paletteLen = reader.read(16)
@@ -8890,6 +9422,18 @@ const MineKhan = async () => {
 					inventory.playerStorage.setItem(id ? new InventoryItem(id, blockData[id].name, stack, blockData[id].iconImg) : null, i)
 				}
 				inventory.hotbar.index = reader.read(4) + inventory.hotbar.start
+
+				// Alpha 0.8.3+ adds survival mode data
+				if (version >= 0x080003) {
+					survival = Boolean(reader.read(1))
+					p.health = reader.read(5)
+					p.hunger = reader.read(5)
+				}
+				else {
+					survival = false
+					p.health = 20
+					p.hunger = 20
+				}
 			}
 
 			this.version = "Alpha " + [version >> 16, version >> 8 & 0xff, version & 0xff].join(".")
@@ -9315,7 +9859,6 @@ const MineKhan = async () => {
 		Slider.all = []
 		const nothing = () => false
 		const always = () => true
-		let survival = false
 
 		// Main menu buttons
 		Button.add(width / 2, height / 2 - 20, 400, 40, "Singleplayer", "main menu", () => {
@@ -9334,8 +9877,14 @@ const MineKhan = async () => {
 				saveToDB("settings", settings).catch(e => console.error(e))
 			}
 		})
+		Button.add(width / 2, height / 2 + 200, 400, 40, "Login / Register", "main menu", () => {
+			const loginUrl = location.origin === "https://minekhan.arjun-puninchittaya.workers.dev"
+				? "/login"
+				: "https://minekhan.arjun-puninchittaya.workers.dev/login"
+			window.location.href = loginUrl
+		})
 		if (height <= 600) {
-			Button.add(width / 2, height / 2 + 200, 400, 40, "Full Screen", "main menu", () => {
+			Button.add(width / 2, height / 2 + 255, 400, 40, "Full Screen", "main menu", () => {
 				const w = window.open()
 				w.document.write(document.children[0].outerHTML)
 			})
@@ -9360,11 +9909,6 @@ const MineKhan = async () => {
 		Button.add(width / 2, 285, 300, 40, ["Game Mode: Creative", "Game Mode: Survival"], "creation menu", r => survival = r === "Game Mode: Survival")
 		Button.add(width / 2, 335, 300, 40, "Difficulty: Peaceful", "creation menu", nothing, always, "Ender dragon blocks? Maybe? Hmmmmmmmmmm...")
 		Button.add(width / 2, height - 90, 300, 40, "Create New World", "creation menu", () => {
-			if (survival) {
-				alert("Survival Soon™")
-				// window.open("https://www.minecraft.net/en-us/store/minecraft-java-edition", "_blank")
-				return
-			}
 			world = new World()
 			world.id = "" + now + (Math.random() * 1000000 | 0)
 			let name = boxCenterTop.value || "World"
@@ -9388,6 +9932,22 @@ const MineKhan = async () => {
 			}
 			world.name = name
 			win.world = world
+			// Give starting items for survival mode
+			if (survival) {
+				p.health = 20
+				p.hunger = 20
+				p.hungerTick = 0
+				const startItems = [
+					[blockIds.grass, 32], [blockIds.dirt, 32], [blockIds.oakLog, 16],
+					[blockIds.stone, 32], [blockIds.sand, 16], [blockIds.oakPlanks, 16],
+				]
+				let slot = inventory.hotbar.start
+				for (const [id, count] of startItems) {
+					inventory.playerStorage.setItem(new InventoryItem(id, blockData[id].name, count, blockData[id].iconImg), slot++)
+				}
+				inventory.hotbar.index = inventory.hotbar.start
+				holding = inventory.hotbar.hand.id
+			}
 			world.loadChunks()
 			world.chunkGenQueue.sort(sortChunks)
 			changeScene("loading")
@@ -9567,6 +10127,91 @@ const MineKhan = async () => {
 		}
 	}
 
+	const renderHealthBar = () => {
+		if (!survival || p.spectator || screen !== "play") return
+		const iconSize = 16
+		const gap = 2
+		const total = 10
+		const barWidth = total * (iconSize + gap) - gap
+		const hotbarH = inventory.hotbar.canvas.height || 44
+		const barX = width / 2 - barWidth - 4
+		const barY = height - hotbarH - 14 - iconSize
+
+		ctx.clearRect(barX - 1, barY - 1, barWidth + 2, iconSize + 2)
+
+		for (let i = 0; i < total; i++) {
+			const hx = barX + i * (iconSize + gap)
+			const hp = (p.health || 0) - i * 2
+
+			// Background
+			ctx.fillStyle = "#3a3a3a"
+			ctx.fillRect(hx, barY, iconSize, iconSize)
+
+			if (hp >= 2) {
+				ctx.fillStyle = "#cc0000"
+				ctx.fillRect(hx + 1, barY + 1, iconSize - 2, iconSize - 2)
+			}
+			else if (hp === 1) {
+				ctx.fillStyle = "#cc0000"
+				ctx.fillRect(hx + 1, barY + 1, (iconSize - 2) / 2, iconSize - 2)
+			}
+
+			ctx.strokeStyle = "#000"
+			ctx.lineWidth = 1
+			ctx.strokeRect(hx, barY, iconSize, iconSize)
+		}
+	}
+
+	const renderHungerBar = () => {
+		if (!survival || p.spectator || screen !== "play") return
+		const iconSize = 16
+		const gap = 2
+		const total = 10
+		const barWidth = total * (iconSize + gap) - gap
+		const hotbarH = inventory.hotbar.canvas.height || 44
+		const barX = width / 2 + 4
+		const barY = height - hotbarH - 14 - iconSize
+
+		ctx.clearRect(barX - 1, barY - 1, barWidth + 2, iconSize + 2)
+
+		for (let i = 0; i < total; i++) {
+			const hx = barX + i * (iconSize + gap)
+			const hg = (p.hunger || 0) - i * 2
+
+			// Background
+			ctx.fillStyle = "#3a3a3a"
+			ctx.fillRect(hx, barY, iconSize, iconSize)
+
+			if (hg >= 2) {
+				ctx.fillStyle = "#7a4500"
+				ctx.fillRect(hx + 1, barY + 1, iconSize - 2, iconSize - 2)
+			}
+			else if (hg === 1) {
+				ctx.fillStyle = "#7a4500"
+				ctx.fillRect(hx + 1, barY + 1, (iconSize - 2) / 2, iconSize - 2)
+			}
+
+			ctx.strokeStyle = "#000"
+			ctx.lineWidth = 1
+			ctx.strokeRect(hx, barY, iconSize, iconSize)
+		}
+	}
+
+	const respawnPlayer = () => {
+		p.health = 20
+		p.hunger = 20
+		p.hungerTick = 0
+		p.fallY = undefined
+		p.velocity.x = 0
+		p.velocity.y = 0
+		p.velocity.z = 0
+		p.flying = false
+		p.x = 8
+		p.z = 8
+		p.y = world.getSurfaceHeight(8, 8) + 2
+		chatAlert("You died! Respawning...")
+	}
+
 	const crosshair = () => {
 		if (p.spectator) return
 		let x = width / 2 + 0.5
@@ -9578,6 +10223,102 @@ const MineKhan = async () => {
 		ctx.lineTo(x + 10, y)
 		ctx.moveTo(x, y - 10)
 		ctx.lineTo(x, y + 10)
+		ctx.stroke()
+	}
+
+	/**
+	 * Draws (or clears) a circular progress arc around the crosshair showing
+	 * how close the player is to breaking the targeted block in survival mode.
+	 */
+	/**
+	 * 18 crack line-segments (normalised 0-1 coords, origin top-left).
+	 * Progressively revealed: stage N shows the first ~(N/9 * 18) segments.
+	 * Origin of the web is near (0.45, 0.45) — slightly above-centre of the face.
+	 */
+	const CRACK_SEGS = [
+		// Stage 1 - first tiny crack
+		[0.45, 0.45, 0.52, 0.28],
+		// Stage 2
+		[0.52, 0.28, 0.62, 0.13],
+		// Stage 3 - branch left-down
+		[0.45, 0.45, 0.32, 0.60],
+		[0.32, 0.60, 0.20, 0.72],
+		// Stage 4 - branch right
+		[0.52, 0.28, 0.68, 0.22],
+		[0.45, 0.45, 0.58, 0.55],
+		// Stage 5 - branch left (horizontal)
+		[0.45, 0.45, 0.18, 0.42],
+		[0.18, 0.42, 0.04, 0.50],
+		// Stage 6 - lower right branch
+		[0.58, 0.55, 0.72, 0.65],
+		[0.72, 0.65, 0.82, 0.75],
+		// Stage 7 - more branches
+		[0.32, 0.60, 0.28, 0.46],
+		[0.68, 0.22, 0.75, 0.08],
+		// Stage 8 - fine cracks filling corners
+		[0.62, 0.13, 0.78, 0.06],
+		[0.62, 0.13, 0.72, 0.30],
+		[0.18, 0.42, 0.10, 0.25],
+		[0.20, 0.72, 0.14, 0.88],
+		// Stage 9 - final dense cracks
+		[0.82, 0.75, 0.90, 0.85],
+		[0.04, 0.50, 0.0, 0.30],
+	]
+
+	let prevBreakRect = null
+	const renderBreakProgress = () => {
+		const breaking = survival && p.breakBlockKey && p.breakTime !== Infinity && p.breakTime > 0
+		if (prevBreakRect) {
+			ctx.clearRect(prevBreakRect.x, prevBreakRect.y, prevBreakRect.w, prevBreakRect.h)
+			prevBreakRect = null
+		}
+		if (!breaking || !hitBox.pos) return
+
+		const progress = Math.min(1, (now - p.breakStart) / p.breakTime)
+		const stage = Math.min(9, Math.ceil(progress * 9)) // 0 = not started (hidden); 1-9 = crack stages
+
+		// Estimate how large the targeted block appears on screen.
+		// Camera.projection[1] = 1/tan(fov/2); object of height 1 at distance d
+		// occupies (projection[1] / d) * (height/2) pixels vertically.
+		const scale = p.projection[1] || 1.732 // fallback: ~60° fov
+		const dist = Math.max(0.5, hitBox.closest)
+		const apparentSize = scale / dist * (height / 2)
+
+		// Centre on the crosshair (block is always at screen-centre when targeted)
+		const cx = width / 2
+		const cy = height / 2
+		const half = apparentSize / 2
+		const bx = cx - half
+		const by = cy - half
+		const pad = 2
+
+		prevBreakRect = { x: bx - pad, y: by - pad, w: apparentSize + pad * 2, h: apparentSize + pad * 2 }
+
+		// 1) Darkening overlay (gets more opaque with each stage)
+		ctx.fillStyle = `rgba(0,0,0,${0.05 + stage * 0.055})`
+		ctx.fillRect(bx, by, apparentSize, apparentSize)
+
+		// 2) Crack lines – reveal more segments per stage
+		const revealed = stage === 9 ? CRACK_SEGS.length : Math.floor(stage / 9 * CRACK_SEGS.length)
+		ctx.strokeStyle = "rgba(0,0,0,0.85)"
+		ctx.lineWidth = Math.max(1, apparentSize / 28)
+		ctx.beginPath()
+		for (let i = 0; i < revealed; i++) {
+			const [x1, y1, x2, y2] = CRACK_SEGS[i]
+			ctx.moveTo(bx + x1 * apparentSize, by + y1 * apparentSize)
+			ctx.lineTo(bx + x2 * apparentSize, by + y2 * apparentSize)
+		}
+		ctx.stroke()
+
+		// 3) White "highlight" edge of same cracks for depth
+		ctx.strokeStyle = "rgba(255,255,255,0.25)"
+		ctx.lineWidth = Math.max(1, apparentSize / 48)
+		ctx.beginPath()
+		for (let i = 0; i < revealed; i++) {
+			const [x1, y1, x2, y2] = CRACK_SEGS[i]
+			ctx.moveTo(bx + x1 * apparentSize + 1, by + y1 * apparentSize + 1)
+			ctx.lineTo(bx + x2 * apparentSize + 1, by + y2 * apparentSize + 1)
+		}
 		ctx.stroke()
 	}
 
@@ -9663,28 +10404,8 @@ const MineKhan = async () => {
 			debugLines.length = lines
 		}
 
-		// "Block light (head): " + world.getLight(p2.x, p2.y, p2.z, 1) + "\n"
-		// + "Sky light (head): " + world.getLight(p2.x, p2.y, p2.z, 0) + "\n"
-
-		// let str = "Average Frame Time: " + analytics.displayedFrameTime + "ms\n"
-		// + "Worst Frame Time: " + analytics.displayedwFrameTime + "ms\n"
-		// + "Render Time: " + analytics.displayedRenderTime + "ms\n"
-		// + "Tick Time: " + analytics.displayedTickTime + "ms\n"
-		// + "Rendered Chunks: " + renderedChunks.toLocaleString() + " / " + world.sortedChunks.length + "\n"
-		// + "Generated Chunks: " + generatedChunks.toLocaleString() + "\n"
-		// + "FPS: " + analytics.fps
-
-		// if (p.autoBreak) {
-		// 	text("Super breaker enabled", 5, height - 89, 12)
-		// }
-		// if (p.autoBuild) {
-		// 	text("Hyper builder enabled", 5, height - 101, 12)
-		// }
-
-		// ctx.textAlign = 'right'
-		// text(p2.x + ", " + p2.y + ", " + p2.z, width - 10, 15, 0)
-		// ctx.textAlign = 'left'
-		// text(str, 5, height - 77, 12)
+		renderHealthBar()
+		renderHungerBar()
 	}
 	let sortedBlocks = Object.entries(blockIds)
 	sortedBlocks.shift() // Get rid of the air block in the array of sorted blocks
@@ -9779,7 +10500,7 @@ const MineKhan = async () => {
 				}
 
 				if (controlMap.jump.triggered() && !p.spectator) {
-					if (now < p.lastJump + 400) {
+					if (!survival && now < p.lastJump + 400) {
 						p.flying = !p.flying
 					}
 					else {
@@ -10189,6 +10910,19 @@ const MineKhan = async () => {
 		p.sneaking = false
 		p.spectator = false
 
+		// Survival mode properties
+		p.health = 20
+		p.hunger = 20
+		p.hungerTick = 0
+		p.fallY = undefined
+		p.breakBlockKey = null
+		p.breakStart = 0
+		p.breakTime = Infinity
+
+		// Head bob state
+		p.walkPhase = 0  // Stride phase angle (radians)
+		p.bobAmp = 0     // Current bob amplitude (smoothly transitions)
+
 		p.minX = () => roundBits(p.x - p.w - p2.x)
 		p.minY = () => roundBits(p.y - p.bottomH - p2.y)
 		p.minZ = () => roundBits(p.z - p.w - p2.z)
@@ -10460,6 +11194,7 @@ const MineKhan = async () => {
 			let renderStart = performance.now()
 			p.setDirection()
 			world.render()
+			renderBreakProgress()
 			analytics.totalRenderTime += performance.now() - renderStart
 		}
 
@@ -10557,6 +11292,71 @@ const MineKhan = async () => {
 			controls()
 			runGravity()
 			resolveContactsAndUpdatePosition()
+
+			// Head bob: update stride phase and amplitude each tick
+			if (!p.spectator && !p.flying) {
+				const hSpeed = sqrt(p.velocity.x * p.velocity.x + p.velocity.z * p.velocity.z)
+				const moving = hSpeed > 0.015 && p.onGround
+				const targetAmp = moving ? p.sprinting ? 1.4 : 1.0 : 0
+				p.bobAmp += (targetAmp - p.bobAmp) * 0.18
+				if (p.bobAmp < 0.01) p.bobAmp = 0
+				if (moving) {
+					const prevPhase = p.walkPhase
+					p.walkPhase += hSpeed * 3.8
+					// Detect each half-stride completion (zero-crossings of sin) for footstep sounds
+					// Guard with a minimum interval to prevent overlapping sounds
+					const crossed = floor(prevPhase / Math.PI) !== floor(p.walkPhase / Math.PI)
+					if (crossed && now - lastFootstepTime > 250) {
+						lastFootstepTime = now
+						playSound("footstep")
+					}
+				}
+			}
+			else {
+				p.bobAmp *= 0.8
+				if (p.bobAmp < 0.01) p.bobAmp = 0
+			}
+
+			// Survival mode: hunger, health, and fall damage
+			if (survival && !p.spectator) {
+				// Hunger depletion
+				if (controlMap.walkForwards.pressed || controlMap.walkBackwards.pressed
+					|| controlMap.strafeLeft.pressed || controlMap.strafeRight.pressed) {
+					p.hungerTick += p.sprinting ? 2 : 1
+				}
+				if (p.hungerTick >= 80 && p.hunger > 0) {
+					p.hungerTick -= 80
+					p.hunger--
+				}
+
+				// Health regeneration when well-fed
+				if (world.tickCount % 80 === 0 && p.hunger >= 18 && p.health < 20) {
+					p.health++
+				}
+
+				// Starvation damage (only if health > 1)
+				if (world.tickCount % 80 === 0 && p.hunger === 0 && p.health > 1) {
+					p.health--
+				}
+
+				// Fall damage tracking
+				if (!p.onGround && !p.flying) {
+					if (p.fallY === undefined || p.y > p.fallY) p.fallY = p.y
+				}
+				else if (p.onGround) {
+					if (p.fallY !== undefined) {
+						const fallDist = p.fallY - p.y
+						if (fallDist > 3) {
+							p.health = max(0, p.health - floor(fallDist - 3))
+							if (p.health <= 0) respawnPlayer()
+						}
+						p.fallY = undefined
+					}
+				}
+				if (p.flying) p.fallY = undefined
+
+				if (p.health <= 0) respawnPlayer()
+			}
 		}
 	}
 

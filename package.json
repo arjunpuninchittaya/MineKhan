@@ -21,7 +21,7 @@
   "homepage": "https://github.com/Willard21/MineKhan#readme",
   "devDependencies": {
     "@types/node": "^20.12.7",
-    "eslint": "^8.21.0",
+    "eslint": "^8.57.1",
     "wrangler": "^4.71.0"
   },
   "dependencies": {

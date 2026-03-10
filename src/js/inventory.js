@@ -33,6 +33,95 @@ const heldCtx = heldItemCanvas.getContext("2d")
  */
 const hoverBox = document.getElementById("onhover")
 
+/**
+ * Draws a single Minecraft-style inset slot background.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} x
+ * @param {Number} y
+ * @param {Number} size
+ */
+const drawSlot = (ctx, x, y, size) => {
+	const b = Math.max(1, size >> 4) // border ≈ 1/16 of slot size
+	ctx.fillStyle = "#8b8b8b"
+	ctx.fillRect(x, y, size, size)
+	// Top/left dark edges (recessed look)
+	ctx.fillStyle = "#373737"
+	ctx.fillRect(x, y, size, b)
+	ctx.fillRect(x, y, b, size)
+	// Bottom/right light edges
+	ctx.fillStyle = "#ffffff"
+	ctx.fillRect(x, y + size - b, size, b)
+	ctx.fillRect(x + size - b, y, b, size)
+}
+
+/**
+ * Draws a simple Steve-like player figure on a 2D canvas.
+ * The figure is 16 pixels wide × 32 pixels tall in "block pixels";
+ * `sc` is the scale factor (pixels per block-pixel).
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} cx  Centre-X of the figure
+ * @param {Number} ty  Top-Y of the figure
+ * @param {Number} sc  Scale factor
+ */
+/**
+ * Draws a right-pointing arrow for the crafting output indicator.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Number} fromX  Left edge of the arrow
+ * @param {Number} centerY  Vertical centre
+ * @param {Number} w  Total width of the arrow
+ */
+const drawArrow = (ctx, fromX, centerY, w) => {
+	const bodyH = Math.max(2, w * 0.2 | 0)
+	const headH = Math.max(4, w * 0.5 | 0)
+	const headW = Math.max(4, w * 0.35 | 0)
+	const bodyW = w - headW
+	ctx.fillStyle = "#555555"
+	ctx.fillRect(fromX, centerY - (bodyH >> 1), bodyW, bodyH)
+	ctx.beginPath()
+	ctx.moveTo(fromX + bodyW, centerY - (headH >> 1))
+	ctx.lineTo(fromX + w, centerY)
+	ctx.lineTo(fromX + bodyW, centerY + (headH >> 1))
+	ctx.closePath()
+	ctx.fill()
+}
+
+const drawPlayerModel = (ctx, cx, ty, sc) => {
+	sc = Math.max(1, sc)
+	// Head (8×8)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx - 4*sc, ty, 8*sc, 8*sc)
+	// Hair detail
+	ctx.fillStyle = "#6b4226"
+	ctx.fillRect(cx - 4*sc, ty, 8*sc, 2*sc)           // top
+	ctx.fillRect(cx - 4*sc, ty + 2*sc, sc, 5*sc)      // left side
+	ctx.fillRect(cx + 3*sc, ty + 2*sc, sc, 5*sc)      // right side
+	// Eyes
+	ctx.fillStyle = "#111111"
+	ctx.fillRect(cx - 2*sc, ty + 3*sc, sc, 2*sc)      // left eye
+	ctx.fillRect(cx + sc,   ty + 3*sc, sc, 2*sc)      // right eye
+	// Body (8×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx - 4*sc, ty + 8*sc, 8*sc, 12*sc)
+	// Left arm (4×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx - 8*sc, ty + 8*sc, 4*sc, 8*sc)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx - 8*sc, ty + 16*sc, 4*sc, 4*sc)  // left hand
+	// Right arm (4×12)
+	ctx.fillStyle = "#4a90d9"
+	ctx.fillRect(cx + 4*sc, ty + 8*sc, 4*sc, 8*sc)
+	ctx.fillStyle = "#f4c98a"
+	ctx.fillRect(cx + 4*sc, ty + 16*sc, 4*sc, 4*sc)  // right hand
+	// Legs (each 4×12)
+	ctx.fillStyle = "#3d5a8a"
+	ctx.fillRect(cx - 4*sc, ty + 20*sc, 4*sc, 10*sc) // left leg
+	ctx.fillRect(cx,        ty + 20*sc, 4*sc, 10*sc) // right leg
+	// Boots
+	ctx.fillStyle = "#2a2a2a"
+	ctx.fillRect(cx - 4*sc, ty + 30*sc, 4*sc, 2*sc)  // left boot
+	ctx.fillRect(cx,        ty + 30*sc, 4*sc, 2*sc)  // right boot
+}
+
 const displayHoverText = (text, mouseX, mouseY) => {
 	hoverBox.textContent = text
 	hoverBox.classList.remove("hidden")
@@ -171,26 +260,17 @@ class InventoryPage {
 		this.ctx.canvas.height = top + this.height + 10 // Clears the canvas like ctx.clearRect
 		this.ctx.canvas.width = this.width + left * 2
 
+		// Draw slot backgrounds (dark inset slots)
+		for (let i = 0; i < this.size; i++) {
+			drawSlot(this.ctx, left + i % 9 * slotSize, top + (i / 9 | 0) * slotSize, slotSize)
+		}
+
 		// Draw the blocks
 		let drawn = 0
 		for (let py = 0; drawn < this.size; py++) {
 			this.renderRow(left, top + py * slotSize, slotSize, drawn)
 			drawn += 9
 		}
-
-		// Draw the grid
-		this.ctx.lineWidth = 4
-		this.ctx.strokeStyle = "black"
-		this.ctx.beginPath()
-		for (let y = 0; y <= this.height; y += slotSize) {
-			this.ctx.moveTo(left,              top + y)
-			this.ctx.lineTo(left + this.width, top + y)
-		}
-		for (let x = 0; x <= this.width; x += slotSize) {
-			this.ctx.moveTo(left + x, top)
-			this.ctx.lineTo(left + x, top + this.height)
-		}
-		this.ctx.stroke()
 	}
 	/**
 	 * @param {MouseEvent} event
@@ -201,23 +281,25 @@ class InventoryPage {
 		const overIndex = this.indexAt(mouseX, mouseY)
 		if (this.items[overIndex]) displayHoverText(this.items[overIndex].name, event.x, event.y)
 		if (this.hoverIndex === overIndex) return
-		this.ctx.lineWidth = 4
+		this.ctx.lineWidth = 2
 
-		// Clear the previous highlight
+		// Restore the previous slot (redraw background + item)
 		if (this.hoverIndex >= 0) {
-			this.ctx.strokeStyle = "black"
 			const x = this.hoverIndex % 9 * this.slotSize + this.left
 			const y = (this.hoverIndex / 9 | 0) * this.slotSize + this.top
-			this.ctx.strokeRect(x, y, this.slotSize, this.slotSize)
+			drawSlot(this.ctx, x, y, this.slotSize)
+			if (this.items[this.hoverIndex]?.icon) {
+				this.items[this.hoverIndex].render(this.ctx, x, y, this.slotSize)
+			}
 		}
 		this.hoverIndex = overIndex
 
-		// Draw new highlight and hover text
+		// Draw new highlight
 		if (overIndex >= 0 && this.items[overIndex]?.icon) {
 			this.ctx.strokeStyle = "white"
 			const x = overIndex % 9 * this.slotSize + this.left
 			const y = (overIndex / 9 | 0) * this.slotSize + this.top
-			this.ctx.strokeRect(x, y, this.slotSize, this.slotSize)
+			this.ctx.strokeRect(x + 1, y + 1, this.slotSize - 2, this.slotSize - 2)
 		}
 		else hoverBox.classList.add("hidden")
 	}
@@ -252,13 +334,13 @@ class InventoryPage {
 		// Redraw the tile
 		const x = this.hoverIndex % 9 * this.slotSize + this.left
 		const y = (this.hoverIndex / 9 | 0) * this.slotSize + this.top
-		this.ctx.clearRect(x, y, this.slotSize, this.slotSize)
+		drawSlot(this.ctx, x, y, this.slotSize)
 		if (this.items[this.hoverIndex]) {
 			this.items[this.hoverIndex].render(this.ctx, x, y, this.slotSize)
+			this.ctx.lineWidth = 2
 			this.ctx.strokeStyle = "white"
+			this.ctx.strokeRect(x + 1, y + 1, this.slotSize - 2, this.slotSize - 2)
 		}
-		else invCtx.strokeStyle = "black"
-		invCtx.strokeRect(x, y, this.slotSize, this.slotSize)
 
 		return old
 	}
@@ -378,6 +460,11 @@ class InventoryManager {
 	 */
 	heldItem = null
 
+	/** 2×2 crafting input slots (0-3) + output slot (4) */
+	craftSlots = Array(5).fill(null)
+	craftingRecipes = []
+	craftArea = null
+
 	// Don't initialize the inventory before the icons have been generated!
 	init(creative) {
 		// Creative Inventories
@@ -447,6 +534,19 @@ class InventoryManager {
 				this.hotbar[i] = storage.items[i + 27]?.id || 0
 			}
 		}
+
+		// Render the player panel with a default name; overwritten with the real name on open
+		this._initRecipes()
+		this.renderPlayerPanel("Player")
+
+		// Player panel mouse handlers (for crafting grid interaction)
+		const playerCanvas = document.getElementById("inv-player-canvas")
+		if (playerCanvas) {
+			playerCanvas.onmousemove = e => this.playerPanelMouseMove(e)
+			playerCanvas.onmousedown = e => this.playerPanelMouseDown(e)
+			playerCanvas.onkeydown = window.parent.canvas.onkeydown
+			playerCanvas.onkeyup = window.parent.canvas.onkeyup
+		}
 	}
 
 	render() {
@@ -456,14 +556,16 @@ class InventoryManager {
 
 		this.containers[this.currentPage].render(left, top + tileSize + 5, tileSize)
 
+		// Draw each category tab with styled slot background
 		for (let i = 0; i < this.containers.length; i++) {
 			const inv = this.containers[i]
+			drawSlot(contCtx, left + i * tileSize, top, tileSize)
 			contCtx.drawImage(inv.icon, left + i * tileSize, top, tileSize, tileSize)
-			contCtx.strokeStyle = "red"
-			contCtx.strokeRect(left + tileSize * i, top, tileSize, tileSize)
 		}
-		contCtx.strokeStyle = "green"
-		contCtx.strokeRect(left + tileSize * this.currentPage, top, tileSize, tileSize)
+		// Highlight the active tab
+		contCtx.lineWidth = 2
+		contCtx.strokeStyle = "white"
+		contCtx.strokeRect(left + tileSize * this.currentPage + 1, top + 1, tileSize - 2, tileSize - 2)
 	}
 
 	/**
@@ -502,7 +604,244 @@ class InventoryManager {
 		if (this.playerStorage) {
 			this.playerStorage.render(10, 10, newSize)
 			this.render()
+			this.renderPlayerPanel(this.playerName)
 		}
+	}
+
+	/**
+	 * Renders the player model + armor slots + 2×2 crafting grid panel.
+	 * @param {String} [playerName]
+	 */
+	renderPlayerPanel(playerName) {
+		this.playerName = playerName || this.playerName || "Player"
+		const canvas = document.getElementById("inv-player-canvas")
+		if (!canvas) return
+		const s = this.iconSize
+		const pad = 10
+		const W = 9 * s + pad * 2
+		const H = 4 * s + pad * 2
+
+		canvas.width = W
+		canvas.height = H
+
+		const ctx = canvas.getContext("2d")
+
+		// --- Armor slots: left column (4 stacked slots) ---
+		for (let i = 0; i < 4; i++) {
+			drawSlot(ctx, pad, pad + i * s, s)
+		}
+
+		// --- Player model: 3-slot-wide area in the centre-left ---
+		const modelAreaX = pad + s + 4
+		const modelAreaW = 3 * s
+		// sc = floor(s/8); model is 32*sc px tall which fits in the 4*s panel height
+		const sc = Math.max(1, s >> 3)
+		const modelH = 32 * sc
+		const modelCX = modelAreaX + (modelAreaW >> 1)
+		// >> has lower precedence than -, so (4*s - modelH) is shifted; vertically centres the model
+		const modelTY = pad + (4 * s - modelH >> 1)
+		drawPlayerModel(ctx, modelCX, modelTY, sc)
+
+		// Player name centred below the model
+		const nameFont = Math.max(8, s * 0.27 | 0)
+		ctx.font = `${nameFont}px monospace`
+		ctx.fillStyle = "#555555"
+		ctx.textAlign = "center"
+		ctx.fillText(this.playerName, modelCX, pad + 4 * s - 2)
+
+		// --- 2×2 crafting grid (right of player model) ---
+		const gx = modelAreaX + modelAreaW + 8
+		const gy = pad + s  // vertically centred: (4 rows - 2 rows) / 2 = 1 row offset
+
+		// Input slots (2 columns × 2 rows)
+		for (let row = 0; row < 2; row++) {
+			for (let col = 0; col < 2; col++) {
+				const sx = gx + col * s
+				const sy = gy + row * s
+				drawSlot(ctx, sx, sy, s)
+				const slot = this.craftSlots[row * 2 + col]
+				if (slot?.icon) slot.render(ctx, sx, sy, s)
+			}
+		}
+
+		// Arrow pointing right
+		const arrowW = Math.max(12, s * 0.6 | 0)
+		const arrowX = gx + 2 * s + 4
+		drawArrow(ctx, arrowX, gy + s, arrowW)
+
+		// Output slot (vertically centred in the 2-row grid)
+		const ox = arrowX + arrowW + 4
+		const oy = gy + (s >> 1)
+		drawSlot(ctx, ox, oy, s)
+		if (this.craftSlots[4]?.icon) this.craftSlots[4].render(ctx, ox, oy, s)
+
+		// Store craft area coords for hit-testing
+		this.craftArea = { gx, gy, ox, oy, s }
+	}
+
+	/**
+	 * Initialises the crafting recipe list from blockIds.
+	 */
+	_initRecipes() {
+		this.craftingRecipes = []
+		const logPlanks = [
+			["oakLog", "oakPlanks"],
+			["birchLog", "birchPlanks"],
+			["spruceLog", "sprucePlanks"],
+			["jungleLog", "junglePlanks"],
+			["acaciaLog", "acaciaPlanks"],
+			["darkOakLog", "darkOakPlanks"],
+			["crimsonStem", "crimsonPlanks"],
+			["warpedStem", "warpedPlanks"],
+		]
+		for (const [log, plank] of logPlanks) {
+			if (blockIds[log] && blockIds[plank]) {
+				this.craftingRecipes.push({ type: "shapeless_single", inputId: blockIds[log], outputId: blockIds[plank], count: 4 })
+			}
+		}
+		if (blockIds.stone && blockIds.stoneBricks) {
+			this.craftingRecipes.push({ type: "shaped_2x2", pattern: [blockIds.stone, blockIds.stone, blockIds.stone, blockIds.stone], outputId: blockIds.stoneBricks, count: 4 })
+		}
+		if (blockIds.cobblestone && blockIds.bricks) {
+			this.craftingRecipes.push({ type: "shaped_2x2", pattern: [blockIds.cobblestone, blockIds.cobblestone, blockIds.cobblestone, blockIds.cobblestone], outputId: blockIds.bricks, count: 4 })
+		}
+	}
+
+	/** Returns the recipe result for the current craft grid state, or null. */
+	_checkRecipes() {
+		const slots = this.craftSlots.slice(0, 4)
+		for (const recipe of this.craftingRecipes) {
+			if (recipe.type === "shapeless_single") {
+				const filled = slots.filter(Boolean)
+				if (filled.length === 1 && filled[0].id === recipe.inputId) {
+					return { id: recipe.outputId, count: recipe.count }
+				}
+			}
+			else if (recipe.type === "shaped_2x2") {
+				let match = true
+				for (let i = 0; i < 4; i++) {
+					const expected = recipe.pattern[i]
+					const actual = slots[i]?.id ?? null
+					if (expected !== actual) {
+						match = false
+						break
+					}
+				}
+				if (match) return { id: recipe.outputId, count: recipe.count }
+			}
+		}
+		return null
+	}
+
+	/** Recomputes the craft output slot from the current inputs and redraws the panel. */
+	_updateCraftOutput() {
+		const result = this._checkRecipes()
+		if (result) {
+			this.craftSlots[4] = new InventoryItem(result.id, blockData[result.id].name, result.count, blockData[result.id].iconImg)
+		}
+		else {
+			this.craftSlots[4] = null
+		}
+		this.renderPlayerPanel(this.playerName)
+	}
+
+	/**
+	 * Returns which crafting slot (0-3 input, 4 output, -1 none) the coordinate hits.
+	 * @param {Number} x
+	 * @param {Number} y
+	 */
+	_craftSlotAt(x, y) {
+		if (!this.craftArea) return -1
+		const { gx, gy, ox, oy, s } = this.craftArea
+		for (let row = 0; row < 2; row++) {
+			for (let col = 0; col < 2; col++) {
+				const sx = gx + col * s
+				const sy = gy + row * s
+				if (x >= sx && x < sx + s && y >= sy && y < sy + s) return row * 2 + col
+			}
+		}
+		if (x >= ox && x < ox + s && y >= oy && y < oy + s) return 4
+		return -1
+	}
+
+	/**
+	 * @param {MouseEvent} event
+	 */
+	playerPanelMouseMove(event) {
+		const idx = this._craftSlotAt(event.offsetX, event.offsetY)
+		const item = idx >= 0 ? this.craftSlots[idx] : null
+		if (item) displayHoverText(item.name, event.x, event.y)
+		else hoverBox.classList.add("hidden")
+	}
+
+	/**
+	 * @param {MouseEvent} event
+	 */
+	playerPanelMouseDown(event) {
+		const idx = this._craftSlotAt(event.offsetX, event.offsetY)
+		if (idx === -1) return
+
+		if (idx === 4) {
+			// Output slot: take crafted result and consume 1 set of inputs
+			const result = this._checkRecipes()
+			if (!result) return
+			const resultItem = new InventoryItem(result.id, blockData[result.id].name, result.count, blockData[result.id].iconImg)
+			if (!this.heldItem) {
+				this.heldItem = resultItem
+			}
+			else if (this.heldItem.id === result.id && this.heldItem.stackSize + result.count <= 64) {
+				this.heldItem.stackSize += result.count
+			}
+			else return // Hand full with a different item
+			// Consume 1 of each occupied input slot
+			for (let i = 0; i < 4; i++) {
+				if (this.craftSlots[i]) {
+					this.craftSlots[i].stackSize--
+					if (this.craftSlots[i].stackSize <= 0) this.craftSlots[i] = null
+				}
+			}
+		}
+		else {
+			// Input slot: swap held item with slot contents
+			const existing = this.craftSlots[idx]
+			if (this.heldItem) {
+				if (existing?.id === this.heldItem.id) {
+					existing.stackSize += this.heldItem.stackSize
+					this.heldItem = null
+				}
+				else {
+					this.craftSlots[idx] = this.heldItem.copy()
+					this.heldItem = existing
+				}
+			}
+			else {
+				this.heldItem = existing
+				this.craftSlots[idx] = null
+			}
+		}
+
+		this._updateCraftOutput()
+
+		if (this.heldItem) {
+			heldItemCanvas.classList.remove("hidden")
+			heldCtx.clearRect(0, 0, this.iconSize, this.iconSize)
+			this.heldItem.render(heldCtx, 0, 0, this.iconSize)
+		}
+		else heldItemCanvas.classList.add("hidden")
+	}
+
+	/**
+	 * Returns any items left in the crafting grid to the player's storage.
+	 * Call this when closing the inventory.
+	 */
+	returnCraftItems() {
+		for (let i = 0; i < 4; i++) {
+			if (this.craftSlots[i]) {
+				this.playerStorage?.addItem(this.craftSlots[i])
+				this.craftSlots[i] = null
+			}
+		}
+		this.craftSlots[4] = null
 	}
 }
 

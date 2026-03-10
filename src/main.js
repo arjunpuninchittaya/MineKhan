@@ -194,10 +194,11 @@ const MineKhan = async () => {
 	}
 
 	// Globals
-	let version = "Alpha 0.8.2"
+	let version = "Alpha 0.8.3"
 	let superflat = false
 	let details = true
 	let caves = true
+	let survival = false
 
 	/**
 	 * @type {WebGLRenderingContext}*/
@@ -357,6 +358,7 @@ const MineKhan = async () => {
 			onenter: () => {
 				win.boxCenterTop.placeholder = "Enter World Name"
 				win.boxCenterTop.value = ""
+				survival = false // Reset to creative by default when entering creation menu
 			}
 		},
 		loading: {
@@ -391,6 +393,22 @@ const MineKhan = async () => {
 			onenter: () => {
 				ctx.clearRect(0, 0, width, height) // Hide the GUI and text and stuff
 				inventory.playerStorage.render()
+				inventory.renderPlayerPanel(currentUser.username)
+				// In survival mode, hide the creative inventory container
+				const invScroll = document.getElementById('inv-scroll')
+				if (invScroll) {
+					if (survival) invScroll.classList.add('hidden')
+					else invScroll.classList.remove('hidden')
+				}
+			},
+			onexit: () => {
+				// Return crafting-grid items to storage and drop held item
+				inventory.returnCraftItems()
+				if (inventory.heldItem) {
+					inventory.playerStorage?.addItem(inventory.heldItem)
+					inventory.heldItem = null
+				}
+				inventory.hotbar.render()
 			}
 		},
 		controls: {
@@ -900,9 +918,16 @@ const MineKhan = async () => {
 			let y = (this.y - this.py) * diff + this.py
 			let z = (this.z - this.pz) * diff + this.pz
 			this.transformation.copyMatrix(defaultTransformation)
-			if (this.rx) this.transformation.rotX(this.rx)
+			// Head bob: vertical dip + slight pitch nod on each stride
+			const bobAmp = this.bobAmp || 0
+			const bobPhase = this.walkPhase || 0
+			const rxBob = this.rx + bobAmp * sin(bobPhase * 2) * 0.012
+			if (rxBob) this.transformation.rotX(rxBob)
+			else if (this.rx) this.transformation.rotX(this.rx)
 			if (this.ry) this.transformation.rotY(this.ry)
-			this.transformation.translate(-x, -y, -z)
+			// Camera dips downward twice per stride cycle (foot-strike impact feel)
+			const yBob = bobAmp * (cos(bobPhase * 2) - 1) * 0.025
+			this.transformation.translate(-x, -(y + yBob), -z)
 		}
 		getMatrix() {
 			let proj = this.projection
@@ -1426,6 +1451,89 @@ const MineKhan = async () => {
 		gl.uniform1f(glCache.uZoffset, 0)
 	}
 
+	/**
+	 * Returns the time in milliseconds required to break the given block in survival mode.
+	 * @param {Number} blockId
+	 */
+	// ── Synthetic block sounds via Web Audio API ──────────────────────────
+	let audioCtx = null
+	let lastFootstepTime = 0
+	const getAudioCtx = () => {
+		if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+		return audioCtx
+	}
+
+	const playSound = (type) => {
+		try {
+			const ctx = getAudioCtx()
+			const startTime = ctx.currentTime
+			const gain = ctx.createGain()
+			gain.connect(ctx.destination)
+
+			if (type === "break" || type === "place") {
+				// Filtered noise burst
+				const bufLen = ctx.sampleRate * 0.12
+				const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate)
+				const data = buf.getChannelData(0)
+				for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1
+				const src = ctx.createBufferSource()
+				src.buffer = buf
+
+				const filter = ctx.createBiquadFilter()
+				if (type === "break") {
+					filter.type = "bandpass"
+					filter.frequency.value = 800
+					filter.Q.value = 0.8
+					gain.gain.setValueAtTime(0.18, startTime)
+					gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12)
+				}
+				else {
+					filter.type = "lowpass"
+					filter.frequency.value = 500
+					gain.gain.setValueAtTime(0.22, startTime)
+					gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08)
+				}
+				src.connect(filter)
+				filter.connect(gain)
+				src.start(startTime)
+				src.stop(startTime + 0.15)
+			}
+			else if (type === "footstep") {
+				// Subtle low thud for footstep
+				const osc = ctx.createOscillator()
+				osc.type = "sine"
+				osc.frequency.setValueAtTime(120, startTime)
+				osc.frequency.exponentialRampToValueAtTime(40, startTime + 0.06)
+				gain.gain.setValueAtTime(0.08, startTime)
+				gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.07)
+				osc.connect(gain)
+				osc.start(startTime)
+				osc.stop(startTime + 0.08)
+			}
+		}
+		catch(e) { /* AudioContext unavailable */ }
+	}
+	// ──────────────────────────────────────────────────────────────────────
+
+	const getBreakTime = (blockId) => {
+		const data = blockData[blockId & 0x3ff]
+		if (!data || !data.solid) return 0
+		const name = data.name || ""
+		if (name === "Bedrock") return Infinity
+		if (name === "Obsidian" || name === "Crying Obsidian") return 9000
+		if (name.includes("Stone") || name.includes("Cobblestone") || name.includes("Brick")
+			|| name.includes("Ore") || name.includes("Deepslate") || name.includes("Prismarine")
+			|| name.includes("Andesite") || name.includes("Diorite") || name.includes("Granite")
+			|| name.includes("Quartz") || name.includes("Netherrack") || name.includes("Blackstone")
+			|| name.includes("Basalt")) return 3000
+		if (name.includes("Dirt") || name.includes("Grass") || name.includes("Sand")
+			|| name.includes("Gravel") || name.includes("Soul")) return 750
+		if (name.includes("Log") || name.includes("Planks") || name.includes("Fence")
+			|| name.includes("Bookshelf") || name.includes("Stem")) return 1500
+		if (name.includes("Wool") || name.includes("Concrete")) return 1000
+		return 1500
+	}
+
 	const changeWorldBlock = (t, x, y, z) => {
 		if (!hitBox.pos) return
 		x ??= hitBox.pos[0]
@@ -1454,6 +1562,12 @@ const MineKhan = async () => {
 			t |= FLIP
 		}
 
+		// Survival mode: check inventory before placing a block
+		if (t && survival) {
+			const heldItem = inventory.hotbar.hand
+			if (!heldItem || heldItem.id !== (t & 0x3ff) || heldItem.stackSize <= 0) return
+		}
+
 		// Check for block collision with player
 		const newBlock = blockData[t]
 		if (newBlock.solid) {
@@ -1476,12 +1590,36 @@ const MineKhan = async () => {
 			if (ppx > nx && ppy > ny && ppz > nz && pnx < px && pny < py && pnz < pz) return
 		}
 
+		// Survival mode: collect the block before removing it
+		if (!t && survival) {
+			const oldBlock = world.getBlock(x, y, z) & 0x3ff
+			if (oldBlock && blockData[oldBlock]?.solid) {
+				inventory.playerStorage.addItem(new InventoryItem(oldBlock, blockData[oldBlock].name, 1, blockData[oldBlock].iconImg))
+				inventory.hotbar.render()
+			}
+		}
+
 		world.setBlock(x, y, z, t, 0)
 		if (t) {
 			p.lastPlace = now
+			playSound("place")
+			// Survival mode: consume the placed block from inventory
+			if (survival) {
+				const heldItem = inventory.hotbar.hand
+				if (heldItem && heldItem.stackSize > 1) {
+					heldItem.stackSize--
+					inventory.hotbar.render()
+				}
+				else if (heldItem) {
+					inventory.playerStorage.items[inventory.hotbar.index] = null
+					inventory.hotbar.render()
+					holding = 0
+				}
+			}
 		}
 		else {
 			p.lastBreak = now
+			playSound("break")
 		}
 	}
 	const newWorldBlock = () => {
@@ -2533,8 +2671,33 @@ const MineKhan = async () => {
 				this.chunkGenQueue.sort(sortChunks)
 			}
 
-			if (controlMap.breakBlock.pressed && (p.lastBreak < now - 250 || p.autoBreak) && screen === "play") {
-				changeWorldBlock(0)
+			if (controlMap.breakBlock.pressed && screen === "play") {
+				if (survival && !p.autoBreak) {
+					// Progressive breaking: track the block being broken
+					const pos = hitBox.pos
+					if (pos) {
+						const key = `${pos[0]},${pos[1]},${pos[2]}`
+						if (p.breakBlockKey !== key) {
+							p.breakBlockKey = key
+							p.breakStart = now
+							const blockId = world.getBlock(pos[0], pos[1], pos[2]) & 0x3ff
+							p.breakTime = getBreakTime(blockId)
+						}
+						else if (p.breakTime !== Infinity && now - p.breakStart >= p.breakTime) {
+							changeWorldBlock(0)
+							p.breakBlockKey = null
+						}
+					}
+					else {
+						p.breakBlockKey = null
+					}
+				}
+				else if (p.lastBreak < now - 250 || p.autoBreak) {
+					changeWorldBlock(0)
+				}
+			}
+			else if (survival) {
+				p.breakBlockKey = null
 			}
 
 			for (let i = 0; i < this.sortedChunks.length; i++) {
@@ -2810,6 +2973,11 @@ const MineKhan = async () => {
 			}
 			bab.add(inventory.hotbar.index - inventory.hotbar.start, 4)
 
+			// Alpha 0.8.3+ survival mode data
+			bab.add(survival ? 1 : 0, 1)
+			bab.add(min(round(p.health ?? 20), 20), 5)
+			bab.add(min(round(p.hunger ?? 20), 20), 5)
+
 			for (let chunk of this.loaded) {
 				let chunkData = chunk.getSave()
 				if (chunkData) bab.append(chunkData)
@@ -2895,6 +3063,11 @@ const MineKhan = async () => {
 				caves = reader.read(1)
 				details = reader.read(1)
 
+				// Old format has no survival data; default to creative
+				survival = false
+				p.health = 20
+				p.hunger = 20
+
 				reader.bit += 24 // Version; we already have that.
 
 				paletteLen = reader.read(16)
@@ -2938,6 +3111,18 @@ const MineKhan = async () => {
 					inventory.playerStorage.setItem(id ? new InventoryItem(id, blockData[id].name, stack, blockData[id].iconImg) : null, i)
 				}
 				inventory.hotbar.index = reader.read(4) + inventory.hotbar.start
+
+				// Alpha 0.8.3+ adds survival mode data
+				if (version >= 0x080003) {
+					survival = Boolean(reader.read(1))
+					p.health = reader.read(5)
+					p.hunger = reader.read(5)
+				}
+				else {
+					survival = false
+					p.health = 20
+					p.hunger = 20
+				}
 			}
 
 			this.version = "Alpha " + [version >> 16, version >> 8 & 0xff, version & 0xff].join(".")
@@ -3363,7 +3548,6 @@ const MineKhan = async () => {
 		Slider.all = []
 		const nothing = () => false
 		const always = () => true
-		let survival = false
 
 		// Main menu buttons
 		Button.add(width / 2, height / 2 - 20, 400, 40, "Singleplayer", "main menu", () => {
@@ -3414,11 +3598,6 @@ const MineKhan = async () => {
 		Button.add(width / 2, 285, 300, 40, ["Game Mode: Creative", "Game Mode: Survival"], "creation menu", r => survival = r === "Game Mode: Survival")
 		Button.add(width / 2, 335, 300, 40, "Difficulty: Peaceful", "creation menu", nothing, always, "Ender dragon blocks? Maybe? Hmmmmmmmmmm...")
 		Button.add(width / 2, height - 90, 300, 40, "Create New World", "creation menu", () => {
-			if (survival) {
-				alert("Survival Soon™")
-				// window.open("https://www.minecraft.net/en-us/store/minecraft-java-edition", "_blank")
-				return
-			}
 			world = new World()
 			world.id = "" + now + (Math.random() * 1000000 | 0)
 			let name = boxCenterTop.value || "World"
@@ -3442,6 +3621,22 @@ const MineKhan = async () => {
 			}
 			world.name = name
 			win.world = world
+			// Give starting items for survival mode
+			if (survival) {
+				p.health = 20
+				p.hunger = 20
+				p.hungerTick = 0
+				const startItems = [
+					[blockIds.grass, 32], [blockIds.dirt, 32], [blockIds.oakLog, 16],
+					[blockIds.stone, 32], [blockIds.sand, 16], [blockIds.oakPlanks, 16],
+				]
+				let slot = inventory.hotbar.start
+				for (const [id, count] of startItems) {
+					inventory.playerStorage.setItem(new InventoryItem(id, blockData[id].name, count, blockData[id].iconImg), slot++)
+				}
+				inventory.hotbar.index = inventory.hotbar.start
+				holding = inventory.hotbar.hand.id
+			}
 			world.loadChunks()
 			world.chunkGenQueue.sort(sortChunks)
 			changeScene("loading")
@@ -3621,6 +3816,91 @@ const MineKhan = async () => {
 		}
 	}
 
+	const renderHealthBar = () => {
+		if (!survival || p.spectator || screen !== "play") return
+		const iconSize = 16
+		const gap = 2
+		const total = 10
+		const barWidth = total * (iconSize + gap) - gap
+		const hotbarH = inventory.hotbar.canvas.height || 44
+		const barX = width / 2 - barWidth - 4
+		const barY = height - hotbarH - 14 - iconSize
+
+		ctx.clearRect(barX - 1, barY - 1, barWidth + 2, iconSize + 2)
+
+		for (let i = 0; i < total; i++) {
+			const hx = barX + i * (iconSize + gap)
+			const hp = (p.health || 0) - i * 2
+
+			// Background
+			ctx.fillStyle = "#3a3a3a"
+			ctx.fillRect(hx, barY, iconSize, iconSize)
+
+			if (hp >= 2) {
+				ctx.fillStyle = "#cc0000"
+				ctx.fillRect(hx + 1, barY + 1, iconSize - 2, iconSize - 2)
+			}
+			else if (hp === 1) {
+				ctx.fillStyle = "#cc0000"
+				ctx.fillRect(hx + 1, barY + 1, (iconSize - 2) / 2, iconSize - 2)
+			}
+
+			ctx.strokeStyle = "#000"
+			ctx.lineWidth = 1
+			ctx.strokeRect(hx, barY, iconSize, iconSize)
+		}
+	}
+
+	const renderHungerBar = () => {
+		if (!survival || p.spectator || screen !== "play") return
+		const iconSize = 16
+		const gap = 2
+		const total = 10
+		const barWidth = total * (iconSize + gap) - gap
+		const hotbarH = inventory.hotbar.canvas.height || 44
+		const barX = width / 2 + 4
+		const barY = height - hotbarH - 14 - iconSize
+
+		ctx.clearRect(barX - 1, barY - 1, barWidth + 2, iconSize + 2)
+
+		for (let i = 0; i < total; i++) {
+			const hx = barX + i * (iconSize + gap)
+			const hg = (p.hunger || 0) - i * 2
+
+			// Background
+			ctx.fillStyle = "#3a3a3a"
+			ctx.fillRect(hx, barY, iconSize, iconSize)
+
+			if (hg >= 2) {
+				ctx.fillStyle = "#7a4500"
+				ctx.fillRect(hx + 1, barY + 1, iconSize - 2, iconSize - 2)
+			}
+			else if (hg === 1) {
+				ctx.fillStyle = "#7a4500"
+				ctx.fillRect(hx + 1, barY + 1, (iconSize - 2) / 2, iconSize - 2)
+			}
+
+			ctx.strokeStyle = "#000"
+			ctx.lineWidth = 1
+			ctx.strokeRect(hx, barY, iconSize, iconSize)
+		}
+	}
+
+	const respawnPlayer = () => {
+		p.health = 20
+		p.hunger = 20
+		p.hungerTick = 0
+		p.fallY = undefined
+		p.velocity.x = 0
+		p.velocity.y = 0
+		p.velocity.z = 0
+		p.flying = false
+		p.x = 8
+		p.z = 8
+		p.y = world.getSurfaceHeight(8, 8) + 2
+		chatAlert("You died! Respawning...")
+	}
+
 	const crosshair = () => {
 		if (p.spectator) return
 		let x = width / 2 + 0.5
@@ -3632,6 +3912,102 @@ const MineKhan = async () => {
 		ctx.lineTo(x + 10, y)
 		ctx.moveTo(x, y - 10)
 		ctx.lineTo(x, y + 10)
+		ctx.stroke()
+	}
+
+	/**
+	 * Draws (or clears) a circular progress arc around the crosshair showing
+	 * how close the player is to breaking the targeted block in survival mode.
+	 */
+	/**
+	 * 18 crack line-segments (normalised 0-1 coords, origin top-left).
+	 * Progressively revealed: stage N shows the first ~(N/9 * 18) segments.
+	 * Origin of the web is near (0.45, 0.45) — slightly above-centre of the face.
+	 */
+	const CRACK_SEGS = [
+		// Stage 1 - first tiny crack
+		[0.45, 0.45, 0.52, 0.28],
+		// Stage 2
+		[0.52, 0.28, 0.62, 0.13],
+		// Stage 3 - branch left-down
+		[0.45, 0.45, 0.32, 0.60],
+		[0.32, 0.60, 0.20, 0.72],
+		// Stage 4 - branch right
+		[0.52, 0.28, 0.68, 0.22],
+		[0.45, 0.45, 0.58, 0.55],
+		// Stage 5 - branch left (horizontal)
+		[0.45, 0.45, 0.18, 0.42],
+		[0.18, 0.42, 0.04, 0.50],
+		// Stage 6 - lower right branch
+		[0.58, 0.55, 0.72, 0.65],
+		[0.72, 0.65, 0.82, 0.75],
+		// Stage 7 - more branches
+		[0.32, 0.60, 0.28, 0.46],
+		[0.68, 0.22, 0.75, 0.08],
+		// Stage 8 - fine cracks filling corners
+		[0.62, 0.13, 0.78, 0.06],
+		[0.62, 0.13, 0.72, 0.30],
+		[0.18, 0.42, 0.10, 0.25],
+		[0.20, 0.72, 0.14, 0.88],
+		// Stage 9 - final dense cracks
+		[0.82, 0.75, 0.90, 0.85],
+		[0.04, 0.50, 0.0, 0.30],
+	]
+
+	let prevBreakRect = null
+	const renderBreakProgress = () => {
+		const breaking = survival && p.breakBlockKey && p.breakTime !== Infinity && p.breakTime > 0
+		if (prevBreakRect) {
+			ctx.clearRect(prevBreakRect.x, prevBreakRect.y, prevBreakRect.w, prevBreakRect.h)
+			prevBreakRect = null
+		}
+		if (!breaking || !hitBox.pos) return
+
+		const progress = Math.min(1, (now - p.breakStart) / p.breakTime)
+		const stage = Math.min(9, Math.ceil(progress * 9)) // 0 = not started (hidden); 1-9 = crack stages
+
+		// Estimate how large the targeted block appears on screen.
+		// Camera.projection[1] = 1/tan(fov/2); object of height 1 at distance d
+		// occupies (projection[1] / d) * (height/2) pixels vertically.
+		const scale = p.projection[1] || 1.732 // fallback: ~60° fov
+		const dist = Math.max(0.5, hitBox.closest)
+		const apparentSize = scale / dist * (height / 2)
+
+		// Centre on the crosshair (block is always at screen-centre when targeted)
+		const cx = width / 2
+		const cy = height / 2
+		const half = apparentSize / 2
+		const bx = cx - half
+		const by = cy - half
+		const pad = 2
+
+		prevBreakRect = { x: bx - pad, y: by - pad, w: apparentSize + pad * 2, h: apparentSize + pad * 2 }
+
+		// 1) Darkening overlay (gets more opaque with each stage)
+		ctx.fillStyle = `rgba(0,0,0,${0.05 + stage * 0.055})`
+		ctx.fillRect(bx, by, apparentSize, apparentSize)
+
+		// 2) Crack lines – reveal more segments per stage
+		const revealed = stage === 9 ? CRACK_SEGS.length : Math.floor(stage / 9 * CRACK_SEGS.length)
+		ctx.strokeStyle = "rgba(0,0,0,0.85)"
+		ctx.lineWidth = Math.max(1, apparentSize / 28)
+		ctx.beginPath()
+		for (let i = 0; i < revealed; i++) {
+			const [x1, y1, x2, y2] = CRACK_SEGS[i]
+			ctx.moveTo(bx + x1 * apparentSize, by + y1 * apparentSize)
+			ctx.lineTo(bx + x2 * apparentSize, by + y2 * apparentSize)
+		}
+		ctx.stroke()
+
+		// 3) White "highlight" edge of same cracks for depth
+		ctx.strokeStyle = "rgba(255,255,255,0.25)"
+		ctx.lineWidth = Math.max(1, apparentSize / 48)
+		ctx.beginPath()
+		for (let i = 0; i < revealed; i++) {
+			const [x1, y1, x2, y2] = CRACK_SEGS[i]
+			ctx.moveTo(bx + x1 * apparentSize + 1, by + y1 * apparentSize + 1)
+			ctx.lineTo(bx + x2 * apparentSize + 1, by + y2 * apparentSize + 1)
+		}
 		ctx.stroke()
 	}
 
@@ -3717,28 +4093,8 @@ const MineKhan = async () => {
 			debugLines.length = lines
 		}
 
-		// "Block light (head): " + world.getLight(p2.x, p2.y, p2.z, 1) + "\n"
-		// + "Sky light (head): " + world.getLight(p2.x, p2.y, p2.z, 0) + "\n"
-
-		// let str = "Average Frame Time: " + analytics.displayedFrameTime + "ms\n"
-		// + "Worst Frame Time: " + analytics.displayedwFrameTime + "ms\n"
-		// + "Render Time: " + analytics.displayedRenderTime + "ms\n"
-		// + "Tick Time: " + analytics.displayedTickTime + "ms\n"
-		// + "Rendered Chunks: " + renderedChunks.toLocaleString() + " / " + world.sortedChunks.length + "\n"
-		// + "Generated Chunks: " + generatedChunks.toLocaleString() + "\n"
-		// + "FPS: " + analytics.fps
-
-		// if (p.autoBreak) {
-		// 	text("Super breaker enabled", 5, height - 89, 12)
-		// }
-		// if (p.autoBuild) {
-		// 	text("Hyper builder enabled", 5, height - 101, 12)
-		// }
-
-		// ctx.textAlign = 'right'
-		// text(p2.x + ", " + p2.y + ", " + p2.z, width - 10, 15, 0)
-		// ctx.textAlign = 'left'
-		// text(str, 5, height - 77, 12)
+		renderHealthBar()
+		renderHungerBar()
 	}
 	let sortedBlocks = Object.entries(blockIds)
 	sortedBlocks.shift() // Get rid of the air block in the array of sorted blocks
@@ -3833,7 +4189,7 @@ const MineKhan = async () => {
 				}
 
 				if (controlMap.jump.triggered() && !p.spectator) {
-					if (now < p.lastJump + 400) {
+					if (!survival && now < p.lastJump + 400) {
 						p.flying = !p.flying
 					}
 					else {
@@ -4243,6 +4599,19 @@ const MineKhan = async () => {
 		p.sneaking = false
 		p.spectator = false
 
+		// Survival mode properties
+		p.health = 20
+		p.hunger = 20
+		p.hungerTick = 0
+		p.fallY = undefined
+		p.breakBlockKey = null
+		p.breakStart = 0
+		p.breakTime = Infinity
+
+		// Head bob state
+		p.walkPhase = 0  // Stride phase angle (radians)
+		p.bobAmp = 0     // Current bob amplitude (smoothly transitions)
+
 		p.minX = () => roundBits(p.x - p.w - p2.x)
 		p.minY = () => roundBits(p.y - p.bottomH - p2.y)
 		p.minZ = () => roundBits(p.z - p.w - p2.z)
@@ -4514,6 +4883,7 @@ const MineKhan = async () => {
 			let renderStart = performance.now()
 			p.setDirection()
 			world.render()
+			renderBreakProgress()
 			analytics.totalRenderTime += performance.now() - renderStart
 		}
 
@@ -4611,6 +4981,71 @@ const MineKhan = async () => {
 			controls()
 			runGravity()
 			resolveContactsAndUpdatePosition()
+
+			// Head bob: update stride phase and amplitude each tick
+			if (!p.spectator && !p.flying) {
+				const hSpeed = sqrt(p.velocity.x * p.velocity.x + p.velocity.z * p.velocity.z)
+				const moving = hSpeed > 0.015 && p.onGround
+				const targetAmp = moving ? p.sprinting ? 1.4 : 1.0 : 0
+				p.bobAmp += (targetAmp - p.bobAmp) * 0.18
+				if (p.bobAmp < 0.01) p.bobAmp = 0
+				if (moving) {
+					const prevPhase = p.walkPhase
+					p.walkPhase += hSpeed * 3.8
+					// Detect each half-stride completion (zero-crossings of sin) for footstep sounds
+					// Guard with a minimum interval to prevent overlapping sounds
+					const crossed = floor(prevPhase / Math.PI) !== floor(p.walkPhase / Math.PI)
+					if (crossed && now - lastFootstepTime > 250) {
+						lastFootstepTime = now
+						playSound("footstep")
+					}
+				}
+			}
+			else {
+				p.bobAmp *= 0.8
+				if (p.bobAmp < 0.01) p.bobAmp = 0
+			}
+
+			// Survival mode: hunger, health, and fall damage
+			if (survival && !p.spectator) {
+				// Hunger depletion
+				if (controlMap.walkForwards.pressed || controlMap.walkBackwards.pressed
+					|| controlMap.strafeLeft.pressed || controlMap.strafeRight.pressed) {
+					p.hungerTick += p.sprinting ? 2 : 1
+				}
+				if (p.hungerTick >= 80 && p.hunger > 0) {
+					p.hungerTick -= 80
+					p.hunger--
+				}
+
+				// Health regeneration when well-fed
+				if (world.tickCount % 80 === 0 && p.hunger >= 18 && p.health < 20) {
+					p.health++
+				}
+
+				// Starvation damage (only if health > 1)
+				if (world.tickCount % 80 === 0 && p.hunger === 0 && p.health > 1) {
+					p.health--
+				}
+
+				// Fall damage tracking
+				if (!p.onGround && !p.flying) {
+					if (p.fallY === undefined || p.y > p.fallY) p.fallY = p.y
+				}
+				else if (p.onGround) {
+					if (p.fallY !== undefined) {
+						const fallDist = p.fallY - p.y
+						if (fallDist > 3) {
+							p.health = max(0, p.health - floor(fallDist - 3))
+							if (p.health <= 0) respawnPlayer()
+						}
+						p.fallY = undefined
+					}
+				}
+				if (p.flying) p.fallY = undefined
+
+				if (p.health <= 0) respawnPlayer()
+			}
 		}
 	}
 
