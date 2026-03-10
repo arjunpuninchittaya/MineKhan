@@ -846,6 +846,119 @@ const MineKhan = async () => {
 		console.log("Block icons drawn and extracted in:", Date.now() - start, "ms")
 	}
 
+	/**
+	 * Draws 2D pixel-art icons for tool items (stick, sword, pickaxe, axe, shovel)
+	 * that cannot be rendered via the 3D block-icon pipeline.
+	 */
+	const drawToolIcons = () => {
+		const SIZE = 64
+
+		// Colour palette
+		const WOOD  = "#8B5E3C" // brown handle / stick
+		const STEEL = "#C8C8C8" // light gray blade
+		const DARK  = "#555555" // dark gray shadow
+
+		/**
+		 * Creates a 64×64 canvas, draws fn(ctx, size) on it, and assigns it as
+		 * the iconImg of the named block.
+		 */
+		const makeIcon = (name, fn) => {
+			const canvas = document.createElement("canvas")
+			canvas.width = SIZE
+			canvas.height = SIZE
+			const c = canvas.getContext("2d")
+			fn(c, SIZE)
+			blockData[blockIds[name]].iconImg = canvas
+		}
+
+		// ── Stick ─────────────────────────────────────────────────────────────
+		makeIcon("stick", (c, s) => {
+			const w = s >> 3 // rod width ≈ 8 px
+			c.fillStyle = WOOD
+			// Diagonal line from top-right to bottom-left
+			for (let i = 0; i < 6; i++) {
+				const x = s * 0.65 - i * (s / 7)
+				const y = s * 0.05 + i * (s / 7)
+				c.fillRect(x | 0, y | 0, w, w)
+			}
+		})
+
+		// ── Wooden Sword ──────────────────────────────────────────────────────
+		makeIcon("woodenSword", (c, s) => {
+			const b = s >> 3
+			// Blade (gray, diagonal top-right → middle)
+			c.fillStyle = STEEL
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.62 - i * (s / 8)
+				const y = s * 0.04 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+			// Tip
+			c.fillStyle = DARK
+			c.fillRect((s * 0.70) | 0, (s * 0.00) | 0, b >> 1, b >> 1)
+			// Guard (horizontal crossbar)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.35) | 0, (s * 0.42) | 0, b * 3, b)
+			// Handle (diagonal bottom)
+			c.fillStyle = WOOD
+			for (let i = 0; i < 3; i++) {
+				const x = s * 0.38 - i * (s / 9)
+				const y = s * 0.52 + i * (s / 9)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+
+		// ── Wooden Pickaxe ────────────────────────────────────────────────────
+		makeIcon("woodenPickaxe", (c, s) => {
+			const b = s >> 3
+			// Head (horizontal bar, top area)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.10) | 0, (s * 0.10) | 0, s * 0.75, b)
+			// Left pick tip
+			c.fillRect((s * 0.10) | 0, (s * 0.18) | 0, b, b)
+			// Right pick tip
+			c.fillRect((s * 0.78) | 0, (s * 0.18) | 0, b, b)
+			// Handle (diagonal centre-left to bottom-right)
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.42 + i * (s / 10)
+				const y = s * 0.28 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+
+		// ── Wooden Axe ────────────────────────────────────────────────────────
+		makeIcon("woodenAxe", (c, s) => {
+			const b = s >> 3
+			// Axe head (L-shape, top-right)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.50) | 0, (s * 0.06) | 0, b * 2.5, b * 3)
+			// Cutting edge (left side of head)
+			c.fillStyle = STEEL
+			c.fillRect((s * 0.42) | 0, (s * 0.10) | 0, b, b * 2.5)
+			// Handle (diagonal, bottom-left)
+			c.fillStyle = WOOD
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.44 - i * (s / 10)
+				const y = s * 0.38 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+
+		// ── Wooden Shovel ─────────────────────────────────────────────────────
+		makeIcon("woodenShovel", (c, s) => {
+			const b = s >> 3
+			// Shovel head (rectangle, top)
+			c.fillStyle = WOOD
+			c.fillRect((s * 0.42) | 0, (s * 0.04) | 0, b * 2, b * 3)
+			// Handle (diagonal, extending to bottom-left)
+			for (let i = 0; i < 4; i++) {
+				const x = s * 0.44 - i * (s / 10)
+				const y = s * 0.38 + i * (s / 8)
+				c.fillRect(x | 0, y | 0, b, b)
+			}
+		})
+	}
+
 	let indexBuffer
 
 	let matrix = new Float32Array(16) // A temperary matrix that may store random data.
@@ -1624,6 +1737,8 @@ const MineKhan = async () => {
 	}
 	const newWorldBlock = () => {
 		if(!hitBox.pos || !holding) return
+		// Prevent non-placeable items (tools, sticks, etc.) from being placed
+		if (blockData[holding]?.placeable === false) return
 		let pos = hitBox.pos, [x, y, z] = pos
 		switch(hitBox.face) {
 			case "top":
@@ -4819,6 +4934,7 @@ const MineKhan = async () => {
 		}
 
 		genIcons() // Generate all the block icons
+		drawToolIcons() // Draw 2D icons for tool items (stick, sword, pickaxe, axe, shovel)
 		initDirt()
 
 		drawScreens[screen]()

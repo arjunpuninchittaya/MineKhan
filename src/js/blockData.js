@@ -612,8 +612,20 @@ const blockData = [
  	name: "tnt",
  	textures: ["tntBottom", "tntTop", "tntSide"]
 	},*/
+	// Tool items – not placeable as world blocks; icons are drawn via drawToolIcons()
+	{ name: "stick",          textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenSword",    textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenPickaxe",  textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenAxe",      textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
+	{ name: "woodenShovel",   textures: "oakPlanks", solid: false, transparent: true, shadow: false, placeable: false },
 ].map((data, i) => new BlockData(data, i))
 blockData[0].iconImg = null // Air doesn't need an icon.
+// Tool items get custom 2D icons drawn by drawToolIcons() in main.js; suppress 3D icon generation.
+if (blockIds.stick)         blockData[blockIds.stick].iconImg         = null
+if (blockIds.woodenSword)   blockData[blockIds.woodenSword].iconImg   = null
+if (blockIds.woodenPickaxe) blockData[blockIds.woodenPickaxe].iconImg = null
+if (blockIds.woodenAxe)     blockData[blockIds.woodenAxe].iconImg     = null
+if (blockIds.woodenShovel)  blockData[blockIds.woodenShovel].iconImg  = null
 
 const BLOCK_COUNT = blockData.length
 
